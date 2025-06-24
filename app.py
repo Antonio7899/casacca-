@@ -249,36 +249,57 @@ def login():
                 border-radius: 6px;
                 font-size: 16px;
                 cursor: pointer;
+                transition: background 0.3s;
             }
             .login-btn:hover {
                 background: #5a6fd8;
             }
-            .back-link {
+            .register-link {
                 text-align: center;
                 margin-top: 20px;
             }
-            .back-link a {
+            .register-link a {
                 color: #667eea;
                 text-decoration: none;
+            }
+            .flash-message {
+                padding: 15px;
+                margin-bottom: 20px;
+                border-radius: 6px;
+            }
+            .flash-success {
+                background-color: #d4edda;
+                color: #155724;
+            }
+            .flash-error {
+                background-color: #f8d7da;
+                color: #721c24;
             }
         </style>
     </head>
     <body>
         <div class="login-container">
-            <h1>🔐 Login</h1>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            <h1>Login</h1>
             <form method="POST">
                 <div class="form-group">
-                    <label for="username">Username:</label>
+                    <label for="username">Username</label>
                     <input type="text" id="username" name="username" required>
                 </div>
                 <div class="form-group">
-                    <label for="password">Password:</label>
+                    <label for="password">Password</label>
                     <input type="password" id="password" name="password" required>
                 </div>
                 <button type="submit" class="login-btn">Accedi</button>
             </form>
-            <div class="back-link">
-                <a href="/">← Torna alla home</a>
+            <div class="register-link">
+                <p>Non hai un account? <a href="/register">Registrati qui</a></p>
             </div>
         </div>
     </body>
@@ -291,15 +312,16 @@ def register():
         username = request.form['username']
         password = request.form['password']
         
+        # Semplice validazione
         if User.query.filter_by(username=username).first():
             flash('Username già esistente!', 'error')
         else:
-            user = User(username=username, password_hash=generate_password_hash(password))
-            db.session.add(user)
+            new_user = User(username=username, password_hash=generate_password_hash(password, method='pbkdf2:sha256'))
+            db.session.add(new_user)
             db.session.commit()
-            flash('Registrazione effettuata con successo!', 'success')
+            flash('Registrazione avvenuta con successo! Effettua il login.', 'success')
             return redirect(url_for('login'))
-    
+            
     return '''
     <!DOCTYPE html>
     <html>
@@ -360,15 +382,16 @@ def register():
                 border-radius: 6px;
                 font-size: 16px;
                 cursor: pointer;
+                transition: background 0.3s;
             }
             .register-btn:hover {
                 background: #5a6fd8;
             }
-            .back-link {
+            .login-link {
                 text-align: center;
                 margin-top: 20px;
             }
-            .back-link a {
+            .login-link a {
                 color: #667eea;
                 text-decoration: none;
             }
@@ -376,20 +399,27 @@ def register():
     </head>
     <body>
         <div class="register-container">
-            <h1>📝 Registrazione</h1>
+             {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            <h1>Registrati</h1>
             <form method="POST">
                 <div class="form-group">
-                    <label for="username">Username:</label>
+                    <label for="username">Username</label>
                     <input type="text" id="username" name="username" required>
                 </div>
                 <div class="form-group">
-                    <label for="password">Password:</label>
+                    <label for="password">Password</label>
                     <input type="password" id="password" name="password" required>
                 </div>
                 <button type="submit" class="register-btn">Registrati</button>
             </form>
-            <div class="back-link">
-                <a href="/">← Torna alla home</a>
+            <div class="login-link">
+                <p>Hai già un account? <a href="/login">Accedi qui</a></p>
             </div>
         </div>
     </body>
@@ -402,112 +432,177 @@ def dashboard():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Dashboard - Sistema di Gestione Steward</title>
+        <title>Dashboard - Gestione Steward</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            body {
-                font-family: Arial, sans-serif;
-                margin: 0;
-                padding: 20px;
-                background: #f5f5f5;
-            }
-            .dashboard {
-                max-width: 1200px;
-                margin: 0 auto;
+            body { 
+                font-family: Arial, sans-serif; 
+                margin: 0; 
+                background-color: #f4f4f9; 
             }
             .header {
-                background: white;
-                padding: 20px;
-                border-radius: 10px;
-                margin-bottom: 20px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                background: #667eea;
+                color: white;
+                padding: 15px 30px;
+                text-align: center;
+                font-size: 1.5em;
             }
-            .grid {
+            .container {
+                padding: 30px;
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                gap: 20px;
+                gap: 30px;
             }
             .card {
                 background: white;
-                padding: 20px;
+                padding: 25px;
                 border-radius: 10px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+                text-align: center;
             }
             .card h3 {
                 margin-top: 0;
                 color: #333;
+                font-size: 1.4em;
+            }
+            .card p {
+                color: #666;
+                line-height: 1.6;
             }
             .btn {
+                display: inline-block;
+                margin-top: 15px;
+                padding: 10px 20px;
                 background: #667eea;
                 color: white;
-                padding: 10px 20px;
-                border: none;
-                border-radius: 5px;
-                cursor: pointer;
                 text-decoration: none;
-                display: inline-block;
-                margin: 5px;
+                border-radius: 5px;
+                transition: background 0.3s;
             }
             .btn:hover {
                 background: #5a6fd8;
             }
-            @media (max-width: 600px) {
-                .grid {
-                    grid-template-columns: 1fr;
-                }
-            }
         </style>
     </head>
     <body>
-        <div class="dashboard">
-            <div class="header">
-                <h1>🏆 Dashboard - Sistema di Gestione Steward</h1>
-                <p>Benvenuto nel sistema di gestione completo per steward ed eventi</p>
+        <div class="header">
+            Dashboard di Gestione
+        </div>
+        <div class="container">
+            <div class="card">
+                <h3>👥 Gestione Steward</h3>
+                <p>Gestisci i profili degli steward, le loro informazioni e competenze.</p>
+                <a href="/stewards" class="btn">Gestisci Steward</a>
             </div>
             
-            <div class="grid">
-                <div class="card">
-                    <h3>👥 Gestione Steward</h3>
-                    <p>Gestisci i profili degli steward, le loro informazioni e competenze.</p>
-                    <a href="#" class="btn">Gestisci Steward</a>
-                </div>
-                
-                <div class="card">
-                    <h3>📅 Gestione Eventi</h3>
-                    <p>Crea e gestisci eventi, assegna steward e monitora le attività.</p>
-                    <a href="#" class="btn">Gestisci Eventi</a>
-                </div>
-                
-                <div class="card">
-                    <h3>✅ Controllo Presenze</h3>
-                    <p>Registra presenze, check-in/out e monitora la partecipazione.</p>
-                    <a href="#" class="btn">Controlla Presenze</a>
-                </div>
-                
-                <div class="card">
-                    <h3>💰 Gestione Transazioni</h3>
-                    <p>Gestisci pagamenti, spese e report finanziari.</p>
-                    <a href="#" class="btn">Gestisci Transazioni</a>
-                </div>
-                
-                <div class="card">
-                    <h3>📊 Report e Analisi</h3>
-                    <p>Genera report, esporta dati e analizza le performance.</p>
-                    <a href="#" class="btn">Visualizza Report</a>
-                </div>
-                
-                <div class="card">
-                    <h3>📁 Documenti</h3>
-                    <p>Carica e gestisci documenti, contratti e certificazioni.</p>
-                    <a href="#" class="btn">Gestisci Documenti</a>
-                </div>
+            <div class="card">
+                <h3>📅 Gestione Eventi</h3>
+                <p>Crea nuovi eventi, modifica quelli esistenti e visualizza il calendario.</p>
+                <a href="#" class="btn">Gestisci Eventi</a>
+            </div>
+            
+            <div class="card">
+                <h3>✅ Controllo Presenze</h3>
+                <p>Registra le presenze degli steward agli eventi e visualizza i report.</p>
+                <a href="#" class="btn">Controlla Presenze</a>
+            </div>
+
+            <div class="card">
+                <h3>💰 Gestione Transazioni</h3>
+                <p>Traccia pagamenti, rimborsi e spese relative a steward ed eventi.</p>
+                <a href="#" class="btn">Gestisci Transazioni</a>
+            </div>
+
+            <div class="card">
+                <h3>📤 Importa/Esporta</h3>
+                <p>Carica dati da file Excel o esporta i dati del sistema.</p>
+                <a href="#" class="btn">Importa/Esporta</a>
+            </div>
+
+            <div class="card">
+                <h3>⚙️ Impostazioni</h3>
+                <p>Configura le impostazioni generali dell'applicazione.</p>
+                <a href="/logout" class="btn">Logout</a>
             </div>
         </div>
     </body>
     </html>
     '''
 
+@app.route('/stewards')
+def stewards():
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Gestione Steward</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
+            h1 { color: #333; }
+            a { 
+                display: inline-block; 
+                margin-top: 20px; 
+                padding: 10px 15px; 
+                background-color: #667eea; 
+                color: white; 
+                text-decoration: none; 
+                border-radius: 5px;
+            }
+            a:hover { background-color: #5a6fd8; }
+        </style>
+    </head>
+    <body>
+        <h1>Gestione Steward</h1>
+        <p>Questa è la pagina per la gestione degli steward. Prossimamente qui potrai aggiungere, modificare e visualizzare gli steward.</p>
+        <a href="/dashboard">Torna alla Dashboard</a>
+    </body>
+    </html>
+    '''
+
+@app.route('/logout')
+def logout():
+    # Qui in futuro gestiremo la logica di sessione
+    return redirect(url_for('login'))
+
+
+# API Endpoints (Esempi, da implementare)
+
+# GESTIONE STEWARD (CRUD)
+@app.route('/api/stewards', methods=['GET'])
+def get_stewards():
+    stewards = Steward.query.all()
+    return jsonify([{'id': s.id, 'name': s.name, 'email': s.email, 'phone': s.phone, 'experience': s.experience} for s in stewards])
+
+@app.route('/api/stewards', methods=['POST'])
+def add_steward():
+    data = request.get_json()
+    new_steward = Steward(name=data['name'], email=data.get('email'), phone=data.get('phone'), experience=data.get('experience'))
+    db.session.add(new_steward)
+    db.session.commit()
+    return jsonify({'id': new_steward.id, 'name': new_steward.name}), 201
+
+# ... Altri endpoint per update, delete, ecc.
+
+
+# GESTIONE EVENTI (CRUD)
+# ...
+
+
+# GESTIONE PRESENZE
+# ...
+
+
+# GESTIONE TRANSAZIONI
+# ...
+
+
+# UPLOAD E EXPORT
+# ...
+
+
 if __name__ == '__main__':
     # Per il deploy su hosting cloud
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False) 
+    # app.run() # Questo è per il locale
+    # Il Procfile userà gunicorn, quindi questa parte non verrà eseguita in produzione
+    app.run(debug=True)
