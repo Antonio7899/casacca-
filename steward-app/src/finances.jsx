@@ -1,0 +1,3 @@
+   import Finances from "./finances";
+   // ...
+   <Finances showModal={tuafunzioneShowModal} />
