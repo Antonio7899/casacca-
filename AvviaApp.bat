@@ -9,29 +9,21 @@ echo.
 echo Avvio automatico del server...
 echo.
 
-cd /d "C:\Users\anton\Desktop\cursor"
-
-echo [1/4] Attivazione ambiente virtuale...
-call .venv\Scripts\activate
-
-echo [2/4] Avvio del server Flask...
-echo Il server sarà disponibile su: http://localhost:5000
-echo.
-
-echo [3/4] Trovando l'IP del computer...
-for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr "IPv4"') do (
-    set IP=%%a
-    goto :found_ip
+cd /d %~dp0
+REM Attiva l'ambiente virtuale se esiste
+if exist .venv\Scripts\activate.bat (
+    call .venv\Scripts\activate.bat
 )
-:found_ip
+REM Avvia il server Flask su tutte le interfacce
+start "" python app.py
+REM Attendi qualche secondo per l'avvio
+ping 127.0.0.1 -n 3 > nul
+REM Ottieni l'indirizzo IP locale
+for /f "tokens=2 delims=: " %%a in ('ipconfig ^| findstr /C:"IPv4"') do set IP=%%a
+REM Rimuovi spazi
 set IP=%IP: =%
-
-echo ✅ IP del computer: %IP%
-echo.
-
-echo [4/4] Apertura del browser...
-timeout /t 2 /nobreak >nul
-start http://localhost:5000
+REM Apri il browser sulla dashboard
+start http://%IP%:5001
 
 echo.
 echo ========================================
@@ -48,8 +40,6 @@ echo 3. L'app funzionerà su tutti i dispositivi!
 echo.
 echo ⚠️  Per fermare il server, premi CTRL+C
 echo ========================================
-
-python app.py
 
 echo.
 echo Server arrestato.
