@@ -1,0 +1,12 @@
+# Exported from Render on 2025-07-01T20:15:01Z
+services:
+- type: web
+  name: steward-app-antonio
+  runtime: python
+  repo: https://github.com/Antonio7899/steward-app
+  plan: free
+  region: oregon
+  buildCommand: pip install -r requirements.txt
+  startCommand: gunicorn app:app
+  autoDeployTrigger: "off"
+version: "1"

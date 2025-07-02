@@ -1,0 +1,9 @@
+Flask==2.2.2
+Flask-SQLAlchemy==3.0.3
+pandas
+Werkzeug==2.2.3
+gunicorn==21.2.0
+openpyxl
+fpdf2
+Flask-Migrate
+requests
