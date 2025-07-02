@@ -93,7 +93,7 @@
             </div>
             <div class="stat-card" style="background:#f44336;color:#fff;padding:20px 30px;border-radius:12px;min-width:160px;text-align:center;box-shadow:0 2px 8px #f44336;">
                 <div style="font-size:2em;">💶</div>
-                <div style="font-size:1.3em;font-weight:bold;">{{ saldo|round(2) }} €</div>
+                <div style="font-size:1.3em;font-weight:bold;">{{ saldo|default(0)|round(2) }} €</div>
                 <div>Saldo</div>
             </div>
             <div class="stat-card" style="background:#ff9800;color:#fff;padding:20px 30px;border-radius:12px;min-width:160px;text-align:center;box-shadow:0 2px 8px #ff9800;">
