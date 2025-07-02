@@ -1,0 +1,16 @@
+{
+  "name": "StewardApp",
+  "short_name": "StewardApp",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#757de8",
+  "theme_color": "#757de8",
+  "description": "Gestione eventi e steward",
+  "icons": [
+    {
+      "src": "/static/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+} 
