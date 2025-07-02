@@ -1,0 +1,34 @@
+{% extends 'dashboard.html' %}
+{% block content %}
+<div class="container mt-4">
+  <h2>Aggiungi Steward</h2>
+  <form method="POST" enctype="multipart/form-data" class="p-3 border rounded bg-light">
+    <div class="row mb-2">
+      <div class="col"><label>Nome*</label><input type="text" name="nome" class="form-control" required></div>
+      <div class="col"><label>Cognome*</label><input type="text" name="cognome" class="form-control" required></div>
+    </div>
+    <div class="row mb-2">
+      <div class="col"><label>Email</label><input type="email" name="email" class="form-control"></div>
+      <div class="col"><label>Telefono</label><input type="text" name="phone" class="form-control"></div>
+    </div>
+    <div class="row mb-2">
+      <div class="col"><label>Indirizzo</label><input type="text" name="address" class="form-control"></div>
+      <div class="col"><label>Codice Fiscale</label><input type="text" name="tax_code" class="form-control"></div>
+    </div>
+    <div class="row mb-2">
+      <div class="col"><label>IBAN</label><input type="text" name="iban" class="form-control"></div>
+      <div class="col"><label>Tipo Documento</label><input type="text" name="document_type" class="form-control"></div>
+      <div class="col"><label>Numero Documento</label><input type="text" name="document_number" class="form-control"></div>
+      <div class="col"><label>Scadenza Documento</label><input type="date" name="document_expiry" class="form-control"></div>
+    </div>
+    <div class="mb-2"><label>Esperienza</label><input type="text" name="experience" class="form-control"></div>
+    <div class="mb-2"><label>Documento Identità (JPG/PDF)</label><input type="file" name="carta_identita" class="form-control" accept=".jpg,.jpeg,.pdf"></div>
+    <div class="mb-2"><label>Codice Fiscale (JPG/PDF)</label><input type="file" name="codice_fiscale" class="form-control" accept=".jpg,.jpeg,.pdf"></div>
+    <div class="mb-2"><label>Attestato (JPG/PDF)</label><input type="file" name="attestato" class="form-control" accept=".jpg,.jpeg,.pdf"></div>
+    <div class="mb-2"><label>Autocertificazione (JPG/PDF)</label><input type="file" name="autocertificazione" class="form-control" accept=".jpg,.jpeg,.pdf"></div>
+    <div class="mb-2"><label>Patente (JPG/PDF)</label><input type="file" name="patente" class="form-control" accept=".jpg,.jpeg,.pdf"></div>
+    <button type="submit" class="btn btn-success mt-2">Aggiungi Steward</button>
+    <a href="{{ url_for('stewards') }}" class="btn btn-secondary mt-2 ms-2">Annulla</a>
+  </form>
+</div>
+{% endblock %} 

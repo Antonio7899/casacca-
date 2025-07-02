@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestione Eventi</title>
+    <style>
+        body { background: #f4f4f9; font-family: Arial, sans-serif; }
+        .container { background: #fff; border-radius: 20px; max-width: 1100px; margin: 40px auto; padding: 40px 30px; box-shadow: 0 0 20px #757de8; }
+        h2 { text-align: center; margin-bottom: 30px; font-size: 2.2em; }
+        .actions { margin-bottom: 20px; text-align: right; }
+        .actions a { background: #757de8; color: #fff; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-left: 10px; }
+        .actions a:hover { background: #5c6bc0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background: #757de8; color: #fff; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .btn { background: #757de8; color: #fff; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; text-decoration: none; font-size: 1em; }
+        .btn:hover { background: #5c6bc0; }
+        .flash { background: #ffe082; color: #333; padding: 10px; border-radius: 6px; margin-bottom: 20px; text-align: center; }
+        .search-form { margin-bottom: 20px; }
+        .search-form input { padding: 8px; border-radius: 5px; border: 1px solid #ccc; min-width: 220px; }
+    </style>
+</head>
+<body>
+    <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:10px;">
+        <a href="/dashboard" class="btn" style="background:#757de8;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:bold;">🏠 Dashboard</a>
+    </div>
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <h2>Gestione Eventi</h2>
+        <div class="actions">
+            <a href="/events/add">➕ Crea Evento</a>
+            <a href="/events/export">📤 Esporta Excel</a>
+        </div>
+        <form class="search-form" method="get">
+            <input type="text" name="search" placeholder="Cerca nome, luogo, tipo evento">
+            <button class="btn" type="submit">🔍 Cerca</button>
+        </form>
+        <table>
+            <tr>
+                <th>Nome</th>
+                <th>Data Inizio</th>
+                <th>Data Fine</th>
+                <th>Luogo</th>
+                <th>Tipo</th>
+                <th>Stato</th>
+                <th>Azioni</th>
+            </tr>
+            {% for evento in eventi %}
+            <tr>
+                <td>{{ evento.nome }}</td>
+                <td>{{ evento.data_inizio }}</td>
+                <td>{{ evento.data_fine }}</td>
+                <td>{{ evento.luogo }}</td>
+                <td>{{ evento.tipo_evento }}</td>
+                <td>{{ evento.stato }}</td>
+                <td>
+                    <a class="btn" href="/event/{{ evento.id }}/edit">✏️ Modifica</a>
+                    <a class="btn" href="/event/{{ evento.id }}/delete" onclick="return confirm('Eliminare questo evento?')">🗑️ Elimina</a>
+                    <a class="btn" href="/event/{{ evento.id }}/stewards">👥 Steward</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</body>
+</html> 
