@@ -2174,5 +2174,3 @@ if __name__ == '__main__':
     app.run(debug=True)
 
 # NON CI DEVE ESSERE ALTRO CODICE DOPO QUESTA RIGA
-
-
