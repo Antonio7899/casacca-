@@ -3,7 +3,7 @@ services:
 - type: web
   name: steward-app-antonio
   runtime: python
-  repo: https://github.com/Antonio7899/steward-app
+  repo: https://github.com/Antonio7899/steward.git
   plan: free
   region: oregon
   buildCommand: pip install -r requirements.txt
