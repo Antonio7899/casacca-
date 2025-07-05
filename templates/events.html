@@ -19,6 +19,16 @@
         .flash { background: #ffe082; color: #333; padding: 10px; border-radius: 6px; margin-bottom: 20px; text-align: center; }
         .search-form { margin-bottom: 20px; }
         .search-form input { padding: 8px; border-radius: 5px; border: 1px solid #ccc; min-width: 220px; }
+        .form-container { background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .form-row { display: flex; gap: 15px; margin-bottom: 15px; }
+        .form-group { flex: 1; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .form-group textarea { height: 80px; resize: vertical; }
+        .btn-success { background: #28a745; }
+        .btn-success:hover { background: #218838; }
+        .toggle-form { background: #6c757d; color: #fff; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-bottom: 20px; display: inline-block; }
+        .toggle-form:hover { background: #5a6268; }
     </style>
 </head>
 <body>
@@ -34,12 +44,81 @@
           {% endif %}
         {% endwith %}
         <h2>Gestione Eventi</h2>
+        
+        <!-- Form per aggiungere nuovo evento -->
+        <div class="form-container" id="addEventForm" style="display: none;">
+            <h3>➕ Crea Nuovo Evento</h3>
+            <form method="POST">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Nome Evento*</label>
+                        <input type="text" name="nome" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo Evento</label>
+                        <select name="tipo_evento">
+                            <option value="">Seleziona tipo</option>
+                            <option value="Sportivo">Sportivo</option>
+                            <option value="Culturale">Culturale</option>
+                            <option value="Musicale">Musicale</option>
+                            <option value="Teatrale">Teatrale</option>
+                            <option value="Conferenza">Conferenza</option>
+                            <option value="Altro">Altro</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Data e Ora Inizio*</label>
+                        <input type="datetime-local" name="data_inizio" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Data e Ora Fine*</label>
+                        <input type="datetime-local" name="data_fine" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Luogo</label>
+                        <input type="text" name="luogo">
+                    </div>
+                    <div class="form-group">
+                        <label>Budget (€)</label>
+                        <input type="number" name="budget" step="0.01" min="0">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Stato</label>
+                        <select name="stato">
+                            <option value="pianificato">Pianificato</option>
+                            <option value="in_corso">In Corso</option>
+                            <option value="completato">Completato</option>
+                            <option value="cancellato">Cancellato</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Descrizione</label>
+                    <textarea name="descrizione" placeholder="Descrizione dell'evento..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Note</label>
+                    <textarea name="note" placeholder="Note aggiuntive..."></textarea>
+                </div>
+                <div style="text-align: center;">
+                    <button type="submit" class="btn btn-success">✅ Crea Evento</button>
+                    <button type="button" class="btn" onclick="toggleForm()">❌ Annulla</button>
+                </div>
+            </form>
+        </div>
+        
         <div class="actions">
-            <a href="/events/add">➕ Crea Evento</a>
+            <a href="#" class="toggle-form" onclick="toggleForm()">➕ Crea Evento</a>
             <a href="/events/export">📤 Esporta Excel</a>
         </div>
         <form class="search-form" method="get">
-            <input type="text" name="search" placeholder="Cerca nome, luogo, tipo evento">
+            <input type="text" name="search" placeholder="Cerca nome, luogo, tipo evento" value="{{ request.args.get('search', '') }}">
             <button class="btn" type="submit">🔍 Cerca</button>
         </form>
         <table>
@@ -69,5 +148,16 @@
             {% endfor %}
         </table>
     </div>
+    
+    <script>
+        function toggleForm() {
+            const form = document.getElementById('addEventForm');
+            if (form.style.display === 'none') {
+                form.style.display = 'block';
+            } else {
+                form.style.display = 'none';
+            }
+        }
+    </script>
 </body>
 </html> 
