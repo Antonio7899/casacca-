@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/favicon.ico">
+    <meta name="theme-color" content="#757de8">
+    <style>
+        body { background: #f4f4f9; font-family: Arial, sans-serif; margin:0; transition:background 0.3s,color 0.3s; }
+        .container { background: #fff; border-radius: 20px; max-width: 700px; margin: 40px auto; padding: 40px 30px; box-shadow: 0 0 20px #757de8; animation: fadeIn 0.7s; }
+        @media (max-width: 900px) {
+            .container { max-width: 98vw; padding: 10vw 2vw; }
+        }
+        @media (max-width: 600px) {
+            .container { border-radius: 0; margin:0; padding: 10px 2vw; box-shadow:none; }
+            .menu { flex-direction: column; gap: 10px; }
+            .stat-card, .menu a { min-width: unset !important; font-size:1em; padding:12px 10px !important; }
+            h2, h3 { font-size:1.2em !important; }
+            table, th, td { font-size:0.95em !important; }
+        }
+        .menu { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
+        .menu a { display: block; background: #757de8; color: #fff; padding: 20px 30px; border-radius: 10px; text-decoration: none; font-size: 1.2em; font-weight: bold; box-shadow: 0 2px 8px #757de8; transition: background 0.2s, box-shadow 0.2s, color 0.2s; }
+        .menu a:hover { background: #5c6bc0; box-shadow: 0 4px 16px #757de8; }
+        .logout { text-align: center; margin-top: 30px; }
+        .flash { background: #ffe082; color: #333; padding: 10px; border-radius: 6px; margin-bottom: 20px; text-align: center; }
+        button, .btn { touch-action: manipulation; font-size:1em; transition: background 0.2s, box-shadow 0.2s, transform 0.1s; }
+        button:active, .btn:active { transform: scale(0.97); }
+        /* Dark mode */
+        @media (prefers-color-scheme: dark) {
+            body { background: #23243a; color: #f4f4f9; }
+            .container { background: #23243a; color: #f4f4f9; box-shadow: 0 0 20px #222; }
+            .menu a, .stat-card { background: #2d2e4a !important; color: #fff !important; box-shadow: 0 2px 8px #222 !important; }
+            .menu a:hover { background: #44456a !important; }
+            .flash { background: #333b5a; color: #ffe082; }
+            table, th, td { background: #23243a !important; color: #f4f4f9 !important; }
+        }
+        /* Bottom nav bar mobile */
+        .bottom-nav { display:none; }
+        @media (max-width: 700px) {
+            .bottom-nav { display:flex; position:fixed; bottom:0; left:0; width:100vw; height:60px; background:#757de8; color:#fff; z-index:1001; box-shadow:0 -2px 8px #757de8; justify-content:space-around; align-items:center; }
+            .bottom-nav a { color:#fff; text-decoration:none; font-size:1.3em; display:flex; flex-direction:column; align-items:center; font-weight:bold; }
+            .bottom-nav a.active { color:#ffe082; }
+        }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(30px);} to { opacity:1; transform:translateY(0);} }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% if meteo_info_dashboard %}
+        <div class="flash" style="background:#fffbe6;border-left:4px solid #ffc107;margin-bottom:20px;">
+            <b>🌦️ Meteo prossimo evento:</b>
+            <span style="font-size:1.1em;">{{ meteo_info_dashboard.evento.nome }} ({{ meteo_info_dashboard.evento.data_inizio.strftime('%d/%m/%Y %H:%M') }}, {{ meteo_info_dashboard.evento.luogo }})</span><br>
+            <span style="font-size:2em;">{{ meteo_info_dashboard.icon }}</span> <b>{{ meteo_info_dashboard.desc }}</b> |
+            <b>Min:</b> {{ meteo_info_dashboard.tmin }}°C | <b>Max:</b> {{ meteo_info_dashboard.tmax }}°C | <b>Pioggia:</b> {{ meteo_info_dashboard.rain }} mm
+        </div>
+        {% endif %}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div></div>
+            <div style="font-size:1.1em;color:#757de8;font-weight:bold;">
+                <span id="datetime"></span>
+            </div>
+            <a href="/dashboard" class="btn" style="background:#757de8;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:bold;">🏠 Dashboard</a>
+        </div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <h2>Dashboard</h2>
+        <div class="menu">
+            <a href="/stewards">Gestione Steward</a>
+            <a href="/events">Gestione Eventi</a>
+            <a href="/finanze">Finanze</a>
+            <a href="/notifiche_eventi">Notifiche</a>
+        </div>
+        <div class="logout">
+            <a href="/logout">Logout</a>
+        </div>
+        <div class="stats" style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;margin:30px 0 20px 0;">
+            <div class="stat-card" style="background:#757de8;color:#fff;padding:20px 30px;border-radius:12px;min-width:160px;text-align:center;box-shadow:0 2px 8px #757de8;">
+                <div style="font-size:2em;">👥</div>
+                <div style="font-size:1.3em;font-weight:bold;">{{ num_stewards }}</div>
+                <div>Steward</div>
+            </div>
+            <div class="stat-card" style="background:#4caf50;color:#fff;padding:20px 30px;border-radius:12px;min-width:160px;text-align:center;box-shadow:0 2px 8px #4caf50;">
+                <div style="font-size:2em;">📅</div>
+                <div style="font-size:1.3em;font-weight:bold;">{{ num_eventi }}</div>
+                <div>Eventi</div>
+            </div>
+            <div class="stat-card" style="background:#f44336;color:#fff;padding:20px 30px;border-radius:12px;min-width:160px;text-align:center;box-shadow:0 2px 8px #f44336;">
+                <div style="font-size:2em;">💶</div>
+                <div style="font-size:1.3em;font-weight:bold;">{{ (saldo or 0)|round(2) }} €</div>
+                <div>Saldo</div>
+            </div>
+            <div class="stat-card" style="background:#ff9800;color:#fff;padding:20px 30px;border-radius:12px;min-width:160px;text-align:center;box-shadow:0 2px 8px #ff9800;">
+                <div style="font-size:2em;">⏰</div>
+                <div style="font-size:1.3em;font-weight:bold;">{{ eventi_imminenti }}</div>
+                <div>Eventi imminenti</div>
+            </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:40px;justify-content:center;margin-bottom:30px;">
+            <div style="background:#fff;padding:20px 30px;border-radius:12px;box-shadow:0 2px 8px #757de8;min-width:320px;">
+                <h3 style="text-align:center;">Eventi per Tipo</h3>
+                <canvas id="tipoChart" width="300" height="300"></canvas>
+            </div>
+            <div style="background:#fff;padding:20px 30px;border-radius:12px;box-shadow:0 2px 8px #757de8;min-width:320px;">
+                <h3 style="text-align:center;">Eventi per Stato</h3>
+                <canvas id="statoChart" width="300" height="300"></canvas>
+            </div>
+        </div>
+        <div style="max-width:900px;margin:40px auto 0 auto;background:#fff;padding:30px 20px;border-radius:12px;box-shadow:0 2px 8px #757de8;">
+            <h3 style="text-align:center;margin-bottom:20px;">Ultimi 5 Eventi</h3>
+            <table style="width:100%;border-collapse:collapse;">
+                <tr style="background:#757de8;color:#fff;">
+                    <th style="padding:8px;">Nome</th>
+                    <th style="padding:8px;">Data Inizio</th>
+                    <th style="padding:8px;">Stato</th>
+                </tr>
+                {% for e in ultimi_eventi %}
+                <tr style="background:{% if loop.index0%2==0 %}#f4f4f9{% else %}#fff{% endif %};">
+                    <td style="padding:8px;">{{ e.nome }}</td>
+                    <td style="padding:8px;">{{ e.data_inizio.strftime('%d/%m/%Y %H:%M') }}</td>
+                    <td style="padding:8px;">{{ e.stato|title }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        <div style="max-width:900px;margin:40px auto 0 auto;background:#fff;padding:30px 20px;border-radius:12px;box-shadow:0 2px 8px #757de8;">
+            <h3 style="text-align:center;margin-bottom:20px;">Saldo per Mese (ultimi 12 mesi)</h3>
+            <canvas id="saldoMeseChart" width="800" height="300"></canvas>
+        </div>
+        <div style="max-width:900px;margin:40px auto 0 auto;background:#fff;padding:30px 20px;border-radius:12px;box-shadow:0 2px 8px #757de8;">
+            <h3 style="text-align:center;margin-bottom:20px;">Calendario Eventi, Festività e Domeniche</h3>
+            <div id="calendar"></div>
+            <div style="margin-top:20px;font-size:1.1em;">
+                <b>Legenda:</b>
+                <span style="background:#17a2b8;color:#fff;padding:4px 10px;border-radius:6px;margin-right:10px;">Eventi</span>
+                <span style="background:#e53935;color:#fff;padding:4px 10px;border-radius:6px;margin-right:10px;">Festività</span>
+                <span style="background:#ff9800;color:#fff;padding:4px 10px;border-radius:6px;">Domenica</span>
+            </div>
+            <div style="margin-top:10px;font-size:0.95em;">
+                <b>Festività:</b>
+                <ul style="columns:2;list-style:square inside;">
+                    {% for fest in holidays_list %}
+                    <li><span style="color:#e53935;font-weight:bold;">{{ fest.date }}</span>: {{ fest.label }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        <div style="max-width:900px;margin:40px auto 0 auto;background:#fff;padding:30px 20px 10px 20px;border-radius:12px;box-shadow:0 2px 8px #757de8;display:flex;align-items:center;justify-content:space-between;">
+            <h3 style="margin:0;font-size:1.2em;">Elenco Impegni (Eventi)</h3>
+            <div style="display:flex;gap:10px;">
+                <button id="btnElencoImpegni" style="background:#e53935;color:#fff;padding:12px 28px;font-size:1.1em;border:none;border-radius:8px;font-weight:bold;box-shadow:0 2px 8px #e53935;cursor:pointer;">📋 Genera Elenco Impegni</button>
+                <button id="btnExportPDF" style="background:#4caf50;color:#fff;padding:12px 18px;font-size:1.1em;border:none;border-radius:8px;font-weight:bold;box-shadow:0 2px 8px #4caf50;cursor:pointer;">⬇️ PDF</button>
+                <button id="btnExportExcel" style="background:#1976d2;color:#fff;padding:12px 18px;font-size:1.1em;border:none;border-radius:8px;font-weight:bold;box-shadow:0 2px 8px #1976d2;cursor:pointer;">⬇️ Excel</button>
+            </div>
+        </div>
+        <!-- Modal scelta filtro elenco impegni -->
+        <div id="modalImpegni" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.4);z-index:1000;align-items:center;justify-content:center;">
+            <div style="background:#fff;padding:30px 30px 20px 30px;border-radius:14px;max-width:350px;margin:auto;box-shadow:0 2px 16px #757de8;">
+                <h3 style="margin-top:0;text-align:center;">Scegli periodo elenco</h3>
+                <form id="formFiltroImpegni" method="get" action="/stampa_eventi" style="display:flex;flex-direction:column;gap:18px;">
+                    <label><input type="radio" name="filtro" value="annuale" checked> Annuale</label>
+                    <label><input type="radio" name="filtro" value="mensile"> Mensile</label>
+                    <label><input type="radio" name="filtro" value="singolo"> Singolo evento</label>
+                    <div id="sceltaMese" style="display:none;">
+                        <label>Mese: <input type="month" name="mese"></label>
+                    </div>
+                    <div id="sceltaEvento" style="display:none;">
+                        <label>Evento:
+                            <select name="evento_id">
+                                {% for e in eventi_cal %}
+                                <option value="{{ e.id }}">{{ e.title }} ({{ e.start }})</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                    </div>
+                    <div style="display:flex;gap:10px;justify-content:center;margin-top:10px;">
+                        <button type="submit" style="background:#4caf50;color:#fff;padding:8px 18px;border:none;border-radius:6px;font-weight:bold;">Genera</button>
+                        <button type="button" id="closeModalImpegni" style="background:#aaa;color:#fff;padding:8px 18px;border:none;border-radius:6px;font-weight:bold;">Annulla</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="bottom-nav">
+        <a href="/dashboard" class="{% if request.path=='/dashboard' %}active{% endif %}">🏠<span style="font-size:0.7em;">Home</span></a>
+        <a href="/events" class="{% if request.path.startswith('/events') %}active{% endif %}">📅<span style="font-size:0.7em;">Eventi</span></a>
+        <a href="/finanze" class="{% if request.path.startswith('/finanze') %}active{% endif %}">💶<span style="font-size:0.7em;">Finanze</span></a>
+        <a href="/stewards" class="{% if request.path.startswith('/stewards') %}active{% endif %}">👥<span style="font-size:0.7em;">Steward</span></a>
+        <a href="/notifiche_eventi" class="{% if request.path.startswith('/notifiche_eventi') %}active{% endif %}">🔔<span style="font-size:0.7em;">Notifiche</span></a>
+    </div>
+    <link href="{{ url_for('static', filename='main.min.css') }}" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Aggiorna data e ora in tempo reale
+        function updateDateTime() {
+            const now = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
+            document.getElementById('datetime').textContent = now.toLocaleDateString('it-IT', options);
+        }
+        setInterval(updateDateTime, 1000);
+        updateDateTime();
+        const tipoLabels = {{ tipo_labels|default([])|tojson }};
+        const tipoData = {{ tipo_data|default([])|tojson }};
+        const statoLabels = {{ stato_labels|default([])|tojson }};
+        const statoData = {{ stato_data|default([])|tojson }};
+        new Chart(document.getElementById('tipoChart'), {
+            type: 'doughnut',
+            data: {
+                labels: tipoLabels,
+                datasets: [{ data: tipoData, backgroundColor: ['#757de8','#4caf50','#f44336','#ff9800','#17a2b8','#6c757d','#dc3545'] }]
+            }
+        });
+        new Chart(document.getElementById('statoChart'), {
+            type: 'bar',
+            data: {
+                labels: statoLabels,
+                datasets: [{ label: 'Eventi', data: statoData, backgroundColor: '#757de8' }]
+            },
+            options: { scales: { y: { beginAtZero: true } } }
+        });
+        // Saldo per mese
+        const mesiOrdinati = {{ mesi_ordinati|default([])|tojson }};
+        const saldiMensili = {{ saldi_mensili|default([])|tojson }};
+        new Chart(document.getElementById('saldoMeseChart'), {
+            type: 'line',
+            data: {
+                labels: mesiOrdinati,
+                datasets: [{ label: 'Saldo (€)', data: saldiMensili, borderColor: '#4caf50', backgroundColor: 'rgba(76,175,80,0.1)', fill: true }]
+            },
+            options: { scales: { y: { beginAtZero: false } } }
+        });
+        // CALENDARIO EVENTI
+        document.addEventListener('DOMContentLoaded', function() {
+            var calendarEl = document.getElementById('calendar');
+            if(calendarEl) {
+                var eventi = {{ eventi_cal|default([])|tojson }};
+                var holidays = {{ holidays_list|default([])|tojson }};
+                var sundays = {{ sundays|default([])|tojson }};
+                // Festività come eventi rossi
+                var holidayEvents = holidays.map(h => ({
+                    title: h.label,
+                    start: h.date,
+                    allDay: true,
+                    color: '#e53935',
+                    textColor: '#fff',
+                    extendedProps: { isHoliday: true }
+                }));
+                // Domeniche come eventi arancioni
+                var sundayEvents = sundays.map(d => ({
+                    title: 'Domenica',
+                    start: d,
+                    allDay: true,
+                    color: '#ff9800',
+                    textColor: '#fff',
+                    extendedProps: { isSunday: true }
+                }));
+                // Eventi veri (azzurro/verde)
+                var eventEvents = eventi.map(ev => ({
+                    title: ev.title,
+                    start: ev.start,
+                    end: ev.end,
+                    allDay: true,
+                    color: ev.color,
+                    textColor: '#fff',
+                    extendedProps: { descrizione: ev.descrizione }
+                }));
+                var allEvents = [...eventEvents, ...holidayEvents, ...sundayEvents];
+                var calendar = new FullCalendar.Calendar(calendarEl, {
+                    initialView: 'dayGridMonth',
+                    locale: 'it',
+                    height: 600,
+                    events: allEvents,
+                    eventDidMount: function(info) {
+                        if(info.event.extendedProps.isHoliday) {
+                            info.el.title = info.event.title + ' (Festività)';
+                        }
+                        if(info.event.extendedProps.isSunday) {
+                            info.el.title = 'Domenica';
+                        }
+                    },
+                    eventClick: function(info) {
+                        if(info.event.extendedProps.descrizione) {
+                            alert('Evento: ' + info.event.title + '\n' + info.event.extendedProps.descrizione);
+                        }
+                    }
+                });
+                calendar.render();
+            }
+        });
+        // MODAL ELENCO IMPEGNI
+        document.getElementById('btnElencoImpegni').onclick = function() {
+            document.getElementById('modalImpegni').style.display = 'flex';
+        };
+        document.getElementById('closeModalImpegni').onclick = function() {
+            document.getElementById('modalImpegni').style.display = 'none';
+        };
+        // Mostra/nasconde selettori in base al filtro
+        document.querySelectorAll('input[name="filtro"]').forEach(function(radio) {
+            radio.onchange = function() {
+                document.getElementById('sceltaMese').style.display = (this.value === 'mensile') ? 'block' : 'none';
+                document.getElementById('sceltaEvento').style.display = (this.value === 'singolo') ? 'block' : 'none';
+            };
+        });
+        // ESPORTA PDF/EXCEL
+        function getFiltroParams() {
+            var filtro = document.querySelector('input[name="filtro"]:checked').value;
+            var params = new URLSearchParams();
+            params.append('filtro', filtro);
+            if(filtro === 'mensile') {
+                var mese = document.querySelector('input[name="mese"]').value;
+                if(mese) params.append('mese', mese);
+            }
+            if(filtro === 'singolo') {
+                var evento_id = document.querySelector('select[name="evento_id"]').value;
+                if(evento_id) params.append('evento_id', evento_id);
+            }
+            return params.toString();
+        }
+        document.getElementById('btnExportPDF').onclick = function() {
+            var params = getFiltroParams();
+            window.open('/esporta_eventi?formato=pdf&' + params, '_blank');
+        };
+        document.getElementById('btnExportExcel').onclick = function() {
+            var params = getFiltroParams();
+            window.open('/esporta_eventi?formato=excel&' + params, '_blank');
+        };
+        // PWA: registra service worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/static/service-worker.js');
+            });
+        }
+        // NOTIFICHE PUSH DEMO
+        if ('Notification' in window && 'serviceWorker' in navigator) {
+            Notification.requestPermission().then(function(permission) {
+                if(permission === 'granted') {
+                    navigator.serviceWorker.ready.then(function(reg) {
+                        reg.showNotification('Benvenuto su StewardApp!', {
+                            body: 'Le notifiche sono attive. Riceverai avvisi importanti qui.',
+                            icon: '/static/favicon.ico',
+                            badge: '/static/favicon.ico'
+                        });
+                    });
+                }
+            });
+        }
+    </script>
+</body>
+</html> 

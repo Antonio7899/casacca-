@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Registrazione</title>
+    <style>
+        body { background: #757de8; font-family: Arial, sans-serif; }
+        .container { background: #fff; border-radius: 20px; max-width: 400px; margin: 40px auto; padding: 40px 30px; box-shadow: 0 0 20px #757de8; }
+        h2 { text-align: center; margin-bottom: 30px; font-size: 2.2em; }
+        label { font-weight: bold; }
+        input[type=text], input[type=password], input[type=email] { width: 100%; padding: 10px; margin: 10px 0 20px 0; border: 1px solid #ccc; border-radius: 6px; }
+        button { width: 100%; background: #757de8; color: #fff; border: none; padding: 12px; border-radius: 6px; font-size: 1.1em; cursor: pointer; }
+        button:hover { background: #5c6bc0; }
+        .login { text-align: center; margin-top: 20px; }
+        .flash { background: #ffe082; color: #333; padding: 10px; border-radius: 6px; margin-bottom: 20px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:10px;">
+        <a href="/dashboard" class="btn" style="background:#757de8;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:bold;">🏠 Dashboard</a>
+    </div>
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <h2>Registrazione</h2>
+        <form method="POST">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" required autofocus>
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required>
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+            <button type="submit">Registrati</button>
+        </form>
+        <div class="login">
+            Hai già un account? <a href="/login">Accedi qui</a>
+        </div>
+    </div>
+</body>
+</html> 

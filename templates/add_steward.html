@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Aggiungi Steward</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { 
+            background: #f4f4f9; 
+            font-family: Arial, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+        }
+        .container { 
+            background: #fff; 
+            border-radius: 20px; 
+            max-width: 800px; 
+            margin: 40px auto; 
+            padding: 40px 30px; 
+            box-shadow: 0 0 20px #757de8; 
+        }
+        h2 { 
+            text-align: center; 
+            margin-bottom: 30px; 
+            font-size: 2.2em; 
+            color: #333; 
+        }
+        .form-container { 
+            background: #f8f9fa; 
+            padding: 20px; 
+            border-radius: 10px; 
+            margin-bottom: 20px; 
+        }
+        .form-row { 
+            display: flex; 
+            gap: 15px; 
+            margin-bottom: 15px; 
+        }
+        .form-group { 
+            flex: 1; 
+        }
+        .form-group label { 
+            display: block; 
+            margin-bottom: 5px; 
+            font-weight: bold; 
+            color: #555; 
+        }
+        .form-group input, 
+        .form-group select, 
+        .form-group textarea { 
+            width: 100%; 
+            padding: 12px; 
+            border: 2px solid #ddd; 
+            border-radius: 6px; 
+            font-size: 16px; 
+            box-sizing: border-box; 
+        }
+        .form-group input:focus, 
+        .form-group select:focus, 
+        .form-group textarea:focus { 
+            border-color: #757de8; 
+            outline: none; 
+        }
+        .form-group textarea { 
+            height: 80px; 
+            resize: vertical; 
+        }
+        .btn { 
+            background: #757de8; 
+            color: #fff; 
+            border: none; 
+            padding: 12px 24px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            text-decoration: none; 
+            font-size: 16px; 
+            font-weight: bold; 
+            margin: 5px; 
+            transition: background 0.2s; 
+        }
+        .btn:hover { 
+            background: #5c6bc0; 
+        }
+        .btn-success { 
+            background: #28a745; 
+        }
+        .btn-success:hover { 
+            background: #218838; 
+        }
+        .btn-secondary { 
+            background: #6c757d; 
+        }
+        .btn-secondary:hover { 
+            background: #5a6268; 
+        }
+        .flash { 
+            background: #ffe082; 
+            color: #333; 
+            padding: 15px; 
+            border-radius: 6px; 
+            margin-bottom: 20px; 
+            text-align: center; 
+            font-weight: bold; 
+        }
+        .flash.success { 
+            background: #d4edda; 
+            color: #155724; 
+            border: 1px solid #c3e6cb; 
+        }
+        .flash.error { 
+            background: #f8d7da; 
+            color: #721c24; 
+            border: 1px solid #f5c6cb; 
+        }
+        .flash.warning { 
+            background: #fff3cd; 
+            color: #856404; 
+            border: 1px solid #ffeeba; 
+        }
+        .actions { 
+            text-align: center; 
+            margin-top: 20px; 
+        }
+        .required { 
+            color: #dc3545; 
+        }
+        @media (max-width: 768px) {
+            .form-row { 
+                flex-direction: column; 
+            }
+            .container { 
+                margin: 20px auto; 
+                padding: 20px 15px; 
+            }
+        }
+    </style>
+</head>
+<body>
+    <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:10px;">
+        <a href="/dashboard" class="btn" style="background:#757de8;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:bold;">🏠 Dashboard</a>
+    </div>
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        
+        <h2>➕ Aggiungi Nuovo Steward</h2>
+        
+        <div class="form-container">
+            <form method="POST" enctype="multipart/form-data">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Nome <span class="required">*</span></label>
+                        <input type="text" name="nome" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Cognome <span class="required">*</span></label>
+                        <input type="text" name="cognome" class="form-control" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Telefono</label>
+                        <input type="text" name="phone" class="form-control">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Indirizzo</label>
+                        <input type="text" name="address" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Codice Fiscale</label>
+                        <input type="text" name="tax_code" class="form-control">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>IBAN</label>
+                        <input type="text" name="iban" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo Documento</label>
+                        <select name="document_type" class="form-control">
+                            <option value="">Seleziona tipo</option>
+                            <option value="Carta d'Identità">Carta d'Identità</option>
+                            <option value="Patente">Patente</option>
+                            <option value="Passaporto">Passaporto</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Numero Documento</label>
+                        <input type="text" name="document_number" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Scadenza Documento</label>
+                        <input type="date" name="document_expiry" class="form-control">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Esperienza</label>
+                    <textarea name="experience" class="form-control" placeholder="Descrivi l'esperienza dello steward..."></textarea>
+                </div>
+                
+                <h3 style="margin-top: 30px; margin-bottom: 20px; color: #333;">📄 Documenti (JPG/PDF)</h3>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Carta d'Identità</label>
+                        <input type="file" name="carta_identita" class="form-control" accept=".jpg,.jpeg,.pdf">
+                    </div>
+                    <div class="form-group">
+                        <label>Codice Fiscale</label>
+                        <input type="file" name="codice_fiscale" class="form-control" accept=".jpg,.jpeg,.pdf">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Attestato</label>
+                        <input type="file" name="attestato" class="form-control" accept=".jpg,.jpeg,.pdf">
+                    </div>
+                    <div class="form-group">
+                        <label>Autocertificazione</label>
+                        <input type="file" name="autocertificazione" class="form-control" accept=".jpg,.jpeg,.pdf">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Patente</label>
+                    <input type="file" name="patente" class="form-control" accept=".jpg,.jpeg,.pdf">
+                </div>
+                
+                <div class="actions">
+                    <button type="submit" class="btn btn-success">✅ Aggiungi Steward</button>
+                    <a href="/stewards" class="btn btn-secondary">❌ Annulla</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html> 

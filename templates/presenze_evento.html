@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Presenze Evento</title>
+    <style>
+        body { background: #f4f4f9; font-family: Arial, sans-serif; }
+        .container { background: #fff; border-radius: 20px; max-width: 900px; margin: 40px auto; padding: 40px 30px; box-shadow: 0 0 20px #757de8; }
+        h2 { text-align: center; margin-bottom: 30px; font-size: 2.2em; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background: #757de8; color: #fff; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .btn { background: #757de8; color: #fff; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; text-decoration: none; font-size: 1em; margin: 5px; }
+        .btn-whatsapp { background: #25d366; }
+        .btn-save { background: #28a745; }
+        .btn-back { background: #6c757d; }
+        .btn-pay { background: #ffc107; color: #212529; }
+        .flash { background: #ffe082; color: #333; padding: 10px; border-radius: 6px; margin-bottom: 20px; text-align: center; }
+        textarea { width: 100%; height: 100px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:10px;">
+        <a href="/dashboard" class="btn" style="background:#757de8;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:bold;">🏠 Dashboard</a>
+    </div>
+    <div class="container">
+        {% if meteo_info %}
+        <div class="flash" style="background:#fffbe6;border-left:4px solid #ffc107;">
+            <b>🌦️ Meteo previsto per {{ evento.data_inizio.strftime('%d/%m/%Y') }} a {{ evento.luogo }}:</b><br>
+            <span style="font-size:2em;">{{ meteo_info.icon }}</span> <b>{{ meteo_info.desc }}</b> |
+            <b>Min:</b> {{ meteo_info.tmin }}°C | <b>Max:</b> {{ meteo_info.tmax }}°C | <b>Pioggia:</b> {{ meteo_info.rain }} mm
+        </div>
+        {% endif %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <h2>Presenze - {{ evento.nome }}</h2>
+        <form method="POST">
+            <table>
+                <tr>
+                    <th>Casacca</th>
+                    <th>Nome</th>
+                    <th>Ruolo</th>
+                    <th>Presente</th>
+                </tr>
+                {% for p in partecipazioni %}
+                <tr>
+                    <td>{{ p.numero_casacca or '-' }}</td>
+                    <td>{{ p.steward.nome }} {{ p.steward.cognome }}</td>
+                    <td>{{ p.ruolo }}</td>
+                    <td><input type="checkbox" name="presente_{{ p.id }}" {% if p.presente %}checked{% endif %}></td>
+                </tr>
+                {% endfor %}
+            </table>
+            <button class="btn btn-save" type="submit">💾 Salva Presenze</button>
+        </form>
+        <div style="margin:20px 0;">
+            <button class="btn btn-whatsapp" onclick="copyMsg()">📋 Copia lista WhatsApp</button>
+            <a href="{{ whatsapp_url }}" target="_blank" class="btn btn-whatsapp">📱 Invia su WhatsApp</a>
+            <a href="/event/{{ evento.id }}/genera_pagamenti" class="btn btn-pay">💶 Genera Pagamenti</a>
+            <a href="/event/{{ evento.id }}/stewards" class="btn btn-back">← Torna a Gestione Steward</a>
+        </div>
+        <textarea id="msg">{{ msg }}</textarea>
+        <script>
+            function copyMsg(){
+                var t=document.getElementById('msg');
+                t.select();
+                document.execCommand('copy');
+                alert('Messaggio copiato!');
+            }
+        </script>
+    </div>
+</body>
+</html> 

@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, url_for, flash, get_flashed_messages, send_file, render_template_string, send_from_directory, jsonify, make_response
+from flask import Flask, request, redirect, url_for, flash, get_flashed_messages, send_file, render_template_string, send_from_directory, jsonify, make_response, render_template, session
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -14,6 +14,11 @@ import urllib.parse
 import tempfile
 import csv
 import requests
+from collections import Counter, defaultdict
+from io import BytesIO
+from reportlab.lib import colors
+from reportlab.platypus import Table, TableStyle
+import calendar
 
 # 1. INIZIALIZZAZIONE
 app = Flask(__name__)
@@ -192,24 +197,18 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
         user = User.query.filter_by(username=username).first()
-        
         if user and password and check_password_hash(user.password_hash, password):
+            session['username'] = username  # <--- AGGIUNTO
             return redirect(url_for('dashboard'))
         else:
             flash('⚠️ Username o password non validi!', 'warning')
-    
-    messages_html = ''.join(f'<div class="flash-message flash-{c}"><span style="font-size:1.2em;">{"✅" if c == "success" else "❌" if c == "error" else "⚠️"}</span><span>{m}</span></div>' for c, m in get_flashed_messages(with_categories=True))
-    form_html = '''
-        <div class="form-group"><label for="username">Username</label><input type="text" id="username" name="username" required></div>
-        <div class="form-group"><label for="password">Password</label><input type="password" id="password" name="password" required></div>
-    '''
-    link_html = '<p>Non hai un account? <a href="/register">Registrati qui</a></p>'
-    return render_form_page('Login', form_html, link_html, messages_html)
+    return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         username = request.form.get('username')
+        email = request.form.get('email')
         password = request.form.get('password')
         if User.query.filter_by(username=username).first():
             flash('⚠️ Username già esistente!', 'warning')
@@ -221,825 +220,228 @@ def register():
             db.session.commit()
             flash('✅ Registrazione avvenuta con successo! Ora puoi effettuare il login.', 'success')
             return redirect(url_for('login'))
-
-    messages_html = ''.join(f'<div class="flash-message flash-{c}"><span style="font-size:1.2em;">{"✅" if c == "success" else "❌" if c == "error" else "⚠️"}</span><span>{m}</span></div>' for c, m in get_flashed_messages(with_categories=True))
-    form_html = '''
-        <div class="form-group"><label for="username">Username</label><input type="text" id="username" name="username" required></div>
-        <div class="form-group"><label for="password">Password</label><input type="password" id="password" name="password" required></div>
-    '''
-    link_html = '<p>Hai già un account? <a href="/login">Accedi qui</a></p>'
-    return render_form_page('Registrati', form_html, link_html, messages_html)
+    return render_template('register.html')
 
 @app.route('/dashboard')
 def dashboard():
-    from flask import request, make_response
-    # Dizionari per giorni e mesi in italiano
-    giorni_it = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom']
-    mesi_it = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic']
-    citta = request.args.get('citta')
-    if not citta:
-        citta = request.cookies.get('citta', 'Roma')
-    username = request.args.get('username', '')
-    meteo_info = None
-    meteo_3gg = []
-    try:
-        geo_url = f"https://nominatim.openstreetmap.org/search?format=json&q={citta}"
-        geo_resp = requests.get(geo_url, headers={"User-Agent": "StewardApp/1.0"}, timeout=5)
-        geo_data = geo_resp.json()
-        if geo_data:
-            lat = geo_data[0]['lat']
-            lon = geo_data[0]['lon']
-            oggi = datetime.date.today()
-            start_str = oggi.strftime('%Y-%m-%d')
-            end_str = (oggi + datetime.timedelta(days=3)).strftime('%Y-%m-%d')
-            meteo_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&timezone=Europe/Rome&start_date={start_str}&end_date={end_str}"
-            meteo_resp = requests.get(meteo_url, timeout=5)
-            meteo_data = meteo_resp.json()
-            if 'daily' in meteo_data and meteo_data['daily']['time']:
-                code_map = {
-                    0: ("Soleggiato", "☀️"),
-                    1: ("Prevalentemente sereno", "🌤️"),
-                    2: ("Parzialmente nuvoloso", "⛅"),
-                    3: ("Coperto", "☁️"),
-                    45: ("Nebbia", "🌫️"),
-                    48: ("Nebbia gelata", "🌫️❄️"),
-                    51: ("Pioviggine leggera", "🌦️"),
-                    53: ("Pioviggine", "🌦️"),
-                    55: ("Pioviggine intensa", "🌧️"),
-                    61: ("Pioggia leggera", "🌦️"),
-                    63: ("Pioggia", "🌧️"),
-                    65: ("Pioggia intensa", "🌧️"),
-                    71: ("Neve leggera", "🌨️"),
-                    73: ("Neve", "🌨️"),
-                    75: ("Neve intensa", "❄️"),
-                    80: ("Rovesci leggeri", "🌦️"),
-                    81: ("Rovesci", "🌧️"),
-                    82: ("Rovesci forti", "⛈️"),
-                }
-                # Oggi
-                idx = 0
-                tmax = meteo_data['daily']['temperature_2m_max'][idx]
-                tmin = meteo_data['daily']['temperature_2m_min'][idx]
-                rain = meteo_data['daily']['precipitation_sum'][idx]
-                code = meteo_data['daily']['weathercode'][idx]
-                desc, icon = code_map.get(code, ("", "❓"))
-                meteo_info = {
-                    'desc': desc,
-                    'icon': icon,
-                    'tmin': tmin,
-                    'tmax': tmax,
-                    'rain': rain,
-                    'citta': citta
-                }
-                # Prossimi 3 giorni (escludo oggi)
-                for i in range(1, 4):
-                    if i >= len(meteo_data['daily']['time']):
-                        break
-                    data_iso = meteo_data['daily']['time'][i]
-                    data_dt = datetime.datetime.strptime(data_iso, '%Y-%m-%d')
-                    giorno = giorni_it[data_dt.weekday()] + f" {data_dt.day} {mesi_it[data_dt.month-1]}"
-                    tmax = meteo_data['daily']['temperature_2m_max'][i]
-                    tmin = meteo_data['daily']['temperature_2m_min'][i]
-                    rain = meteo_data['daily']['precipitation_sum'][i]
-                    code = meteo_data['daily']['weathercode'][i]
+    from datetime import datetime, timedelta, date
+    from collections import Counter, defaultdict
+    import calendar
+    # Statistiche principali
+    num_stewards = Steward.query.count()
+    num_eventi = Evento.query.count()
+    saldo = sum(m.importo if m.tipo == 'entrata' else -m.importo for m in MovimentoFinanziario.query.all())
+    oggi = datetime.now()
+    eventi_imminenti = Evento.query.filter(Evento.data_inizio >= oggi, Evento.data_inizio <= oggi + timedelta(days=7)).count()
+    # Distribuzione eventi per tipo
+    tipi_evento = [e.tipo_evento or 'Altro' for e in Evento.query.all()]
+    tipo_labels = list(set(tipi_evento))
+    tipo_data = [tipi_evento.count(t) for t in tipo_labels]
+    # Distribuzione eventi per stato
+    stati_evento = [e.stato or 'pianificato' for e in Evento.query.all()]
+    stato_labels = list(set(stati_evento))
+    stato_data = [stati_evento.count(s) for s in stato_labels]
+    # Ultimi 5 eventi
+    ultimi_eventi = Evento.query.order_by(Evento.data_inizio.desc()).limit(5).all()
+    # Saldo per mese (ultimi 12 mesi)
+    movimenti = MovimentoFinanziario.query.all()
+    saldo_per_mese = defaultdict(float)
+    for m in movimenti:
+        key = m.data.strftime('%Y-%m')
+        saldo_per_mese[key] += m.importo if m.tipo == 'entrata' else -m.importo
+    mesi_ordinati = sorted(saldo_per_mese.keys())[-12:]
+    saldi_mensili = [saldo_per_mese[m] for m in mesi_ordinati]
+    # METEO prossimo evento
+    meteo_info_dashboard = None
+    prossimo_evento = Evento.query.filter(Evento.data_inizio >= oggi).order_by(Evento.data_inizio.asc()).first()
+    if prossimo_evento and prossimo_evento.luogo and prossimo_evento.data_inizio:
+        try:
+            geo_url = f"https://nominatim.openstreetmap.org/search?format=json&q={prossimo_evento.luogo}"
+            geo_resp = requests.get(geo_url, headers={"User-Agent": "StewardApp/1.0"}, timeout=5)
+            geo_data = geo_resp.json()
+            if geo_data:
+                lat = geo_data[0]['lat']
+                lon = geo_data[0]['lon']
+                data_str = prossimo_evento.data_inizio.strftime('%Y-%m-%d')
+                meteo_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&timezone=Europe/Rome&start_date={data_str}&end_date={data_str}"
+                meteo_resp = requests.get(meteo_url, timeout=5)
+                meteo_data = meteo_resp.json()
+                if 'daily' in meteo_data and meteo_data['daily']['time']:
+                    idx = 0
+                    tmax = meteo_data['daily']['temperature_2m_max'][idx]
+                    tmin = meteo_data['daily']['temperature_2m_min'][idx]
+                    rain = meteo_data['daily']['precipitation_sum'][idx]
+                    code = meteo_data['daily']['weathercode'][idx]
+                    code_map = {
+                        0: ("Soleggiato", "☀️"),
+                        1: ("Prevalentemente sereno", "🌤️"),
+                        2: ("Parzialmente nuvoloso", "⛅"),
+                        3: ("Coperto", "☁️"),
+                        45: ("Nebbia", "🌫️"),
+                        48: ("Nebbia gelata", "🌫️❄️"),
+                        51: ("Pioviggine leggera", "🌦️"),
+                        53: ("Pioviggine", "🌦️"),
+                        55: ("Pioviggine intensa", "🌧️"),
+                        61: ("Pioggia leggera", "🌦️"),
+                        63: ("Pioggia", "🌧️"),
+                        65: ("Pioggia intensa", "🌧️"),
+                        71: ("Neve leggera", "🌨️"),
+                        73: ("Neve", "🌨️"),
+                        75: ("Neve intensa", "❄️"),
+                        80: ("Rovesci leggeri", "🌦️"),
+                        81: ("Rovesci", "🌧️"),
+                        82: ("Rovesci forti", "⛈️"),
+                    }
                     desc, icon = code_map.get(code, ("", "❓"))
-                    meteo_3gg.append({
-                        'giorno': giorno,
+                    meteo_info_dashboard = {
                         'desc': desc,
                         'icon': icon,
                         'tmin': tmin,
                         'tmax': tmax,
-                        'rain': rain
-                    })
-    except Exception as e:
-        meteo_info = {'desc': 'Errore nel recupero meteo', 'icon': '❓', 'tmin': '', 'tmax': '', 'rain': '', 'citta': citta}
-        meteo_3gg = []
-    html = '''
-    <!DOCTYPE html><html><head><title>Dashboard</title><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{font-family:Arial,sans-serif;margin:0;background-color:#f4f4f9}.header{background:#667eea;color:white;padding:15px 30px;text-align:center;font-size:1.5em}.container{padding:30px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px}.card{background:white;padding:25px;border-radius:10px;box-shadow:0 5px 15px rgba(0,0,0,0.1);text-align:center}.card h3{margin-top:0;color:#333;font-size:1.4em}.btn{display:inline-block;margin-top:15px;padding:10px 20px;background:#667eea;color:white;text-decoration:none;border-radius:5px}.card.urgent{background:linear-gradient(135deg,#dc3545,#c82333);color:white}.card.urgent h3,.card.urgent p{color:white}.meteo-box{background:#fffbe6;border-left:4px solid #ffc107;padding:18px 20px;margin:20px auto 30px auto;max-width:500px;border-radius:10px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.07);font-size:1.1em}.meteo-form{display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:10px;}.autocomplete-items{position:absolute;background:#fff;border:1px solid #ccc;z-index:99;max-height:180px;overflow-y:auto;width:220px;box-shadow:0 2px 8px rgba(0,0,0,0.07);border-radius:0 0 8px 8px;}.autocomplete-item{padding:8px;cursor:pointer;}.autocomplete-item:hover{background:#f4f4f9;}.meteo-forecast{display:flex;gap:18px;justify-content:center;margin:18px 0 0 0;flex-wrap:wrap;}.meteo-card{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.07);padding:18px 16px;min-width:120px;max-width:140px;text-align:center;display:flex;flex-direction:column;align-items:center;transition:box-shadow 0.2s;}.meteo-card:hover{box-shadow:0 4px 16px rgba(0,0,0,0.13);}.meteo-card .icon{font-size:2.2em;margin-bottom:4px;}.meteo-card .giorno{font-weight:bold;color:#667eea;margin-bottom:2px;}.meteo-card .desc{font-size:0.98em;color:#444;margin-bottom:4px;}.meteo-card .temp{font-size:1.1em;margin-bottom:2px;}.meteo-card .rain{font-size:0.95em;color:#2196f3;}</style></head><body><div class="header">Dashboard di Gestione</div>'''
-    html += '''<form class="meteo-form" method="get" action="/dashboard" autocomplete="off" style="position:relative;"><div style="position:relative;"><input id="citta-input" type="text" name="citta" value="''' + citta + '''" placeholder="Città" style="padding:8px;border-radius:5px;border:1px solid #ccc;font-size:1em;min-width:120px;width:220px;"><div id="autocomplete-list"></div></div><button type="submit" class="btn" style="margin:0;">🌦️ Cerca Meteo</button></form>'''
-    html += (f'<div class="meteo-box"><b>🌦️ Oggi a {meteo_info["citta"]}:</b><br><span style="font-size:2em;">{meteo_info["icon"]}</span> <b>{meteo_info["desc"]}</b> | <b>Minima:</b> {meteo_info["tmin"]}°C | <b>Massima:</b> {meteo_info["tmax"]}°C | <b>Pioggia:</b> {meteo_info["rain"]} mm' if meteo_info else '')
-    # Previsioni 3 giorni
-    if meteo_3gg:
-        html += '<div style="margin-top:18px;text-align:center;"><b>Previsioni prossimi 3 giorni</b></div>'
-        html += '<div class="meteo-forecast">'
-        for d in meteo_3gg:
-            html += f'''<div class="meteo-card"><div class="giorno">{d['giorno']}</div><div class="icon">{d['icon']}</div><div class="desc">{d['desc']}</div><div class="temp">Minima: {d['tmin']}°C<br>Massima: {d['tmax']}°C</div><div class="rain">☔ Pioggia: {d['rain']} mm</div></div>'''
-        html += '</div>'
-    html += '</div>' if meteo_info else ''
-    html += '''<div class="container"><div class="card"><h3>👥 Gestione Steward</h3><p>Aggiungi o visualizza gli steward.</p><a href="/stewards" class="btn">Vai</a></div><div class="card"><h3>📅 Gestione Eventi</h3><p>Crea e gestisci gli eventi.</p><a href="/events" class="btn">Vai</a><br><a href="/calendario_eventi" class="btn" style="background:#17a2b8;margin-top:10px;">🗓️ Calendario Eventi</a><br><a href="/stampa_eventi" class="btn" style="background:#28a745;margin-top:10px;">🖨️ Stampa Eventi</a><br><a href="/stampa_presenze" class="btn" style="background:#ffc107;margin-top:10px;color:#333;">🖨️ Stampa Presenze</a></div><div class="card urgent"><h3>🚨 Notifiche Eventi</h3><p>Controlla eventi imminenti e urgenti.</p><a href="/notifiche_eventi" class="btn">Vai</a></div><div class="card"><h3>💶 Gestione Finanze</h3><p>Visualizza e gestisci i movimenti finanziari.</p><a href="/finanze" class="btn">Vai</a><br><a href="/report_finanze" class="btn" style="background:#28a745;margin-top:10px;">📊 Report Finanziario</a><br><a href="/gestione_note_spese" class="btn" style="background:#ffc107;margin-top:10px;color:#333;">💸 Gestione Note Spese</a></div><div class="card"><h3>⚙️ Logout</h3><p>Esci dall'applicazione.</p><a href="/" class="btn">Esci</a></div></div>'''
-    html += '''<script>
-    // Autocomplete città
-    const input = document.getElementById('citta-input');
-    const list = document.getElementById('autocomplete-list');
-    let timer = null;
-    input.addEventListener('input', function() {
-        clearTimeout(timer);
-        const val = this.value;
-        if (!val) { list.innerHTML = ''; return; }
-        timer = setTimeout(() => {
-            fetch('/autocomplete_citta?q=' + encodeURIComponent(val))
-                .then(r => r.json())
-                .then(data => {
-                    list.innerHTML = '';
-                    data.forEach(item => {
-                        const div = document.createElement('div');
-                        div.className = 'autocomplete-item';
-                        div.textContent = item;
-                        div.onclick = () => { input.value = item; list.innerHTML = ''; };
-                        list.appendChild(div);
-                    });
-                });
-        }, 250);
-    });
-    document.addEventListener('click', function(e) {
-        if (e.target !== input) list.innerHTML = '';
-    });
-    // Salva città in cookie dopo submit
-    document.querySelector('.meteo-form').addEventListener('submit', function(e) {
-        document.cookie = 'citta=' + encodeURIComponent(input.value) + ';path=/;max-age=31536000';
-    });
-    </script></body></html>'''
-    resp = make_response(html)
-    if request.args.get('citta'):
-        resp.set_cookie('citta', citta, max_age=60*60*24*365)
-    return resp
-    
-# 4. PAGINA ANAGRAFICA STEWARD
-@app.route('/stewards', methods=['GET', 'POST'])
-def stewards():
-    if request.method == 'POST':
-        expiry_date_str = request.form.get('document_expiry')
-        expiry_date = datetime.datetime.strptime(expiry_date_str, '%Y-%m-%d').date() if expiry_date_str else None
-
-        # Gestione upload file obbligatori con validazione JPG
-        upload_folder = os.path.join(os.getcwd(), 'uploads')
-        os.makedirs(upload_folder, exist_ok=True)
-        
-        def save_file(field_name):
-            file = request.files.get(field_name)
-            if not file or file.filename == '':
-                return ''  # Non obbligatorio, restituisco stringa vuota
-            if file.filename and not file.filename.lower().endswith(('.jpg', '.jpeg')):
-                flash(f"⚠️ Il file '{field_name.replace('_', ' ').title()}' deve essere in formato JPG/JPEG!", 'warning')
-                return ''
-            filename = f"{field_name}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}"
-            file_path = os.path.join(upload_folder, filename)
-            file.save(file_path)
-            return file_path
-
-        carta_identita_path = save_file('carta_identita')
-        codice_fiscale_path = save_file('codice_fiscale')
-        attestato_path = save_file('attestato')
-        autocertificazione_path = save_file('autocertificazione')
-        patente_path = save_file('patente')
-
-        # Controllo duplicati su email e codice fiscale
-        email = request.form.get('email')
-        tax_code = request.form.get('tax_code')
-        if email and Steward.query.filter_by(email=email).first():
-            flash('❌ Esiste già uno steward con questa email.', 'error')
-            return redirect(url_for('stewards'))
-        if tax_code and Steward.query.filter_by(tax_code=tax_code).first():
-            flash('❌ Esiste già uno steward con questo codice fiscale.', 'error')
-            return redirect(url_for('stewards'))
-
-        new_steward = Steward(
-            nome=request.form.get('nome'),
-            cognome=request.form.get('cognome'),
-            email=request.form.get('email'),
-            phone=request.form.get('phone'),
-            address=request.form.get('address'),
-            tax_code=request.form.get('tax_code'),
-            iban=request.form.get('iban'),
-            document_type=request.form.get('document_type'),
-            document_number=request.form.get('document_number'),
-            document_expiry=expiry_date,
-            experience=request.form.get('experience'),
-            carta_identita_path=carta_identita_path,
-            codice_fiscale_path=codice_fiscale_path,
-            attestato_path=attestato_path,
-            autocertificazione_path=autocertificazione_path,
-            patente_path=patente_path
-        )
-        if not new_steward.nome or not new_steward.cognome:
-            flash('⚠️ Il nome e il cognome sono campi obbligatori.', 'warning')
-        else:
-            db.session.add(new_steward)
-            db.session.commit()
-            flash(f'✅ Steward "{new_steward.nome} {new_steward.cognome}" aggiunto con successo!', 'success')
-        return redirect(url_for('stewards'))
-
-    # --- FILTRI E RICERCA ---
-    search_query = request.args.get('search', '').strip().lower()
-    filter_missing_docs = request.args.get('missing_docs', '') == '1'
-    filter_expiring = request.args.get('expiring', '') == '1'
-
-    stewards_list = Steward.query.order_by(Steward.nome, Steward.cognome).all()
-    filtered_stewards = []
+                        'rain': rain,
+                        'evento': prossimo_evento
+                    }
+        except Exception as e:
+            meteo_info_dashboard = {'desc': 'Errore nel recupero meteo', 'icon': '❓', 'tmin': '', 'tmax': '', 'rain': '', 'evento': prossimo_evento}
+    # --- CALENDARIO ---
+    eventi = Evento.query.order_by(Evento.data_inizio.asc()).all()
+    eventi_cal = [
+        {
+            'id': e.id,
+            'title': e.nome,
+            'start': e.data_inizio.strftime('%Y-%m-%d'),
+            'end': e.data_fine.strftime('%Y-%m-%d'),
+            'color': '#28a745' if e.stato == 'completato' else '#17a2b8' if e.stato == 'pianificato' else '#dc3545' if e.stato == 'cancellato' else '#ffc107',
+            'descrizione': e.descrizione or ''
+        }
+        for e in eventi
+    ]
+    # Festività italiane principali (fisse + Pasqua)
+    def get_italian_holidays(year):
+        # Feste fisse
+        holidays = [
+            (1, 1, "Capodanno"),
+            (1, 6, "Epifania"),
+            (4, 25, "Liberazione"),
+            (5, 1, "Festa del Lavoro"),
+            (6, 2, "Festa della Repubblica"),
+            (8, 15, "Ferragosto"),
+            (11, 1, "Ognissanti"),
+            (12, 8, "Immacolata"),
+            (12, 25, "Natale"),
+            (12, 26, "S. Stefano")
+        ]
+        # Calcolo Pasqua (algoritmo di Gauss)
+        a = year % 19
+        b = year // 100
+        c = year % 100
+        d = b // 4
+        e = b % 4
+        f = (b + 8) // 25
+        g = (b - f + 1) // 3
+        h = (19 * a + b - d - g + 15) % 30
+        i = c // 4
+        k = c % 4
+        l = (32 + 2 * e + 2 * i - h - k) % 7
+        m = (a + 11 * h + 22 * l) // 451
+        month = (h + l - 7 * m + 114) // 31
+        day = ((h + l - 7 * m + 114) % 31) + 1
+        holidays.append((month, day, "Pasqua"))
+        return holidays
+    # Prendo festività per quest'anno e il prossimo
     today = date.today()
+    holidays = get_italian_holidays(today.year) + get_italian_holidays(today.year+1)
+    holidays_list = [
+        {
+            'date': date(today.year if m >= today.month else today.year+1, m, d).strftime('%Y-%m-%d'),
+            'label': label
+        }
+        for m, d, label in holidays
+    ]
+    # Domeniche dell'anno corrente e prossimo
+    sundays = []
+    for y in [today.year, today.year+1]:
+        for m in range(1, 13):
+            for d in range(1, calendar.monthrange(y, m)[1]+1):
+                if date(y, m, d).weekday() == 6:
+                    sundays.append(date(y, m, d).strftime('%Y-%m-%d'))
+    return render_template('dashboard.html',
+        num_stewards=num_stewards,
+        num_eventi=num_eventi,
+        saldo=saldo,
+        eventi_imminenti=eventi_imminenti,
+        tipo_labels=tipo_labels,
+        tipo_data=tipo_data,
+        stato_labels=stato_labels,
+        stato_data=stato_data,
+        ultimi_eventi=ultimi_eventi,
+        mesi_ordinati=mesi_ordinati,
+        saldi_mensili=saldi_mensili,
+        meteo_info_dashboard=meteo_info_dashboard,
+        eventi_cal=eventi_cal,
+        holidays_list=holidays_list,
+        sundays=sundays
+    )
+
+def send_document_notifications(stewards_list, scadenza_limite):
+    # Placeholder: in produzione inviare email o notifiche reali
+    notifications = []
     for s in stewards_list:
-        # Ricerca
-        if search_query:
-            if not (
-                search_query in (s.nome or '').lower() or
-                search_query in (s.cognome or '').lower() or
-                search_query in (s.email or '').lower() or
-                search_query in (s.tax_code or '').lower()
-            ):
-                continue
-        # Filtro documenti mancanti
         missing_docs = []
         if not s.carta_identita_path:
-            missing_docs.append('Carta d\'Identità')
+            missing_docs.append("Carta d'Identità")
         if not s.codice_fiscale_path:
-            missing_docs.append('Codice Fiscale')
+            missing_docs.append("Codice Fiscale")
         if not s.attestato_path:
-            missing_docs.append('Attestato')
+            missing_docs.append("Attestato")
         if not s.autocertificazione_path:
-            missing_docs.append('Autocertificazione')
+            missing_docs.append("Autocertificazione")
         if not s.patente_path:
-            missing_docs.append('Patente')
-        if filter_missing_docs and not missing_docs:
+            missing_docs.append("Patente")
+        is_expiring = s.document_expiry and s.document_expiry <= scadenza_limite
+        if missing_docs or is_expiring:
+            notifications.append(f"Notifica per {s.nome} {s.cognome}: "+
+                (f"Documenti mancanti: {', '.join(missing_docs)}. " if missing_docs else '')+
+                ("Documenti in scadenza." if is_expiring else ''))
+    if notifications:
+        print("[NOTIFICHE DOCUMENTI]")
+        for n in notifications:
+            print(n)
+
+@app.route('/stewards', methods=['GET', 'POST'])
+def stewards():
+    from datetime import datetime, timedelta
+    scadenza_limite = (datetime.now() + timedelta(days=30)).date()
+    filter_missing = request.args.get('missing', '') == '1'
+    filter_expiring = request.args.get('expiring', '') == '1'
+    stewards_list = Steward.query.order_by(Steward.nome, Steward.cognome).all()
+    send_document_notifications(stewards_list, scadenza_limite)
+    filtered_stewards = []
+    count_missing = 0
+    count_expiring = 0
+    for s in stewards_list:
+        missing_docs = []
+        if not s.carta_identita_path:
+            missing_docs.append("Carta d'Identità")
+        if not s.codice_fiscale_path:
+            missing_docs.append("Codice Fiscale")
+        if not s.attestato_path:
+            missing_docs.append("Attestato")
+        if not s.autocertificazione_path:
+            missing_docs.append("Autocertificazione")
+        if not s.patente_path:
+            missing_docs.append("Patente")
+        is_expiring = s.document_expiry and s.document_expiry <= scadenza_limite
+        if missing_docs:
+            count_missing += 1
+        if is_expiring:
+            count_expiring += 1
+        if filter_missing and not missing_docs:
             continue
-        # Filtro documenti in scadenza (entro 30 giorni)
-        is_expiring = False
-        if s.document_expiry and s.document_expiry <= today + timedelta(days=30):
-            is_expiring = True
         if filter_expiring and not is_expiring:
             continue
-        filtered_stewards.append((s, missing_docs, is_expiring))
-
-    # --- FORM DI RICERCA E FILTRI ---
-    search_html = render_template_string('''
-    <form method="get" style="margin-bottom:20px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
-        <input type="text" name="search" placeholder="Cerca nome, cognome, email, codice fiscale" value="{{ search_value }}" style="padding:8px;border-radius:5px;border:1px solid #ccc;min-width:220px;">
-        <label style="display:flex;align-items:center;gap:5px;font-size:0.95em;">
-            <input type="checkbox" name="missing_docs" value="1" {{ 'checked' if filter_missing_docs else '' }}> Solo con documenti mancanti
-        </label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:0.95em;">
-            <input type="checkbox" name="expiring" value="1" {{ 'checked' if filter_expiring else '' }}> Solo con documenti in scadenza
-        </label>
-        <button type="submit" class="btn" style="background:#17a2b8;">🔍 Cerca/Filtra</button>
-        <a href="/stewards" class="btn" style="background:#aaa;">Azzera</a>
-    </form>
-    ''', search_value=request.args.get('search',''), filter_missing_docs=filter_missing_docs, filter_expiring=filter_expiring)
-
-    table_rows = ""
-    for s, missing_docs, is_expiring in filtered_stewards:
-        expiry_str = s.document_expiry.strftime('%d-%m-%Y') if s.document_expiry else ''
-        # Evidenziazione documenti mancanti
-        evidenzia = 'background-color:#fff3cd;color:#856404;font-weight:bold;' if missing_docs else ''
-        segnalazione = f'<span style="color:#856404;font-size:1.2em;">⚠️</span> <span style="color:#856404;">Documenti mancanti: {", ".join(missing_docs)}</span>' if missing_docs else ''
-        # Evidenziazione scadenza
-        if is_expiring:
-            evidenzia = 'background-color:#ffd6d6;color:#a94442;font-weight:bold;'
-            segnalazione += '<br><span style="color:#a94442;font-size:1.2em;">⏰</span> <span style="color:#a94442;">Documento in scadenza!</span>'
-        # Download documenti
-        doc_links = []
-        if s.carta_identita_path:
-            doc_links.append(f'<a href="/download/{s.id}/carta_identita" target="_blank">Carta d\'Identità</a>')
-        if s.codice_fiscale_path:
-            doc_links.append(f'<a href="/download/{s.id}/codice_fiscale" target="_blank">Codice Fiscale</a>')
-        if s.attestato_path:
-            doc_links.append(f'<a href="/download/{s.id}/attestato" target="_blank">Attestato</a>')
-        if s.autocertificazione_path:
-            doc_links.append(f'<a href="/download/{s.id}/autocertificazione" target="_blank">Autocertificazione</a>')
-        if s.patente_path:
-            doc_links.append(f'<a href="/download/{s.id}/patente" target="_blank">Patente</a>')
-        doc_links_html = '<br>'.join(doc_links)
-        table_rows += f'''
-            <tr style="{evidenzia}">
-                <td>{s.nome}</td>
-                <td>{s.cognome}</td>
-                <td>{s.email or ''}</td>
-                <td>{s.phone or ''}</td>
-                <td>{s.tax_code or ''}</td>
-                <td>{expiry_str}</td>
-                <td>{f"{s.document_type or ''} N. {s.document_number or ''}"}<br>{doc_links_html}</td>
-                <td><a href="/steward/{s.id}/edit" class="btn" style="background:#28a745;">Modifica</a> <a href="/export_steward_pdf/{s.id}" class="btn" style="background:#e74c3c;margin-left:5px;">PDF</a><br>{segnalazione}</td>
-            </tr>'''
-    
-    # Aggiungo i pulsanti per import/export Excel
-    
-    
-    messages_html = ''.join(f'<div class="flash-message flash-{c}"><span style="font-size:1.2em;">{"✅" if c == "success" else "❌" if c == "error" else "⚠️"}</span><span>{m}</span></div>' for c, m in get_flashed_messages(with_categories=True))
-    
-    table_html = render_template_string('''
-    <!DOCTYPE html><html><head><title>Gestione Steward</title><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{font-family:Arial,sans-serif;margin:0;background:#f4f4f9}.header{background:#667eea;color:white;padding:15px 30px;text-align:center;font-size:1.5em}.container{padding:30px;max-width:1200px;margin:auto}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:10px;border:1px solid #ddd;text-align:left}th{background:#667eea;color:white}tr:nth-child(even){background:#f9f9f9}.btn{background:#667eea;color:white;padding:8px 15px;border:none;border-radius:5px;text-decoration:none;cursor:pointer;margin:2px}.btn:hover{background:#5a6fd8}.btn-danger{background:#dc3545}.btn-success{background:#28a745}.btn-warning{background:#ffc107;color:#212529}.btn-info{background:#17a2b8}.flash-message{padding:10px;margin-bottom:10px;border-radius:6px;text-align:center;display:flex;align-items:center;gap:10px;font-weight:bold}.flash-success{background-color:#d4edda;color:#155724;border:1px solid #c3e6cb}.flash-error{background-color:#f8d7da;color:#721c24;border:1px solid #f5c6cb}.flash-warning{background-color:#fff3cd;color:#856404;border:1px solid #ffeeba}.form-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}.form-row input,.form-row select,.form-row textarea{padding:8px;border-radius:5px;border:1px solid #ccc}.form-row textarea{resize:vertical;min-height:80px}.header-buttons{position:absolute;top:15px;right:30px}.header-buttons .btn{background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3)}.stato-badge{padding:4px 8px;border-radius:12px;color:white;font-size:0.8em;font-weight:bold}.event-actions{display:flex;flex-wrap:wrap;gap:5px}.event-actions .btn{font-size:0.8em;padding:4px 8px}.collapsible-form{background:#f9f9f9;border:1px solid #ddd;border-radius:8px;margin-bottom:20px}.collapsible-form summary{font-weight:bold;cursor:pointer;padding:15px;font-size:1.2em;color:#333}.collapsible-form[open] summary{border-bottom:1px solid #ddd}.actions-bar{background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);margin-bottom:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}</style></head><body><div class="header">Gestione Steward<div class="header-buttons"><a href="/dashboard" class="btn">🏠 Dashboard</a></div></div><div class="container">{{ messages_html|safe }}<details class="collapsible-form"><summary>➕ Aggiungi Nuovo Steward</summary><form method="POST" enctype="multipart/form-data" style="padding:15px;"><div class="form-row"><input type="text" name="nome" placeholder="Nome *" required><input type="text" name="cognome" placeholder="Cognome *" required><input type="email" name="email" placeholder="Email"><input type="tel" name="phone" placeholder="Telefono"><input type="text" name="address" placeholder="Indirizzo"><input type="text" name="tax_code" placeholder="Codice Fiscale"><input type="text" name="iban" placeholder="IBAN"><input type="text" name="document_type" placeholder="Tipo Documento"><input type="text" name="document_number" placeholder="Numero Documento"><input type="date" name="document_expiry" placeholder="Scadenza Documento"><input type="text" name="experience" placeholder="Esperienza"></div><div class="form-row"><label>Documenti (JPG/JPEG):</label><input type="file" name="carta_identita" accept=".jpg,.jpeg" placeholder="Carta d'Identità"><input type="file" name="codice_fiscale" accept=".jpg,.jpeg" placeholder="Codice Fiscale"><input type="file" name="attestato" accept=".jpg,.jpeg" placeholder="Attestato"><input type="file" name="autocertificazione" accept=".jpg,.jpeg" placeholder="Autocertificazione"><input type="file" name="patente" accept=".jpg,.jpeg" placeholder="Patente"></div><button type="submit" class="btn">Aggiungi Steward</button></form></details><div class="actions-bar"><form method="POST" action="/import_stewards" enctype="multipart/form-data" style="display:flex;align-items:center;gap:5px;"><input type="file" name="file" accept=".xlsx,.xls" required><button type="submit" class="btn" style="background:#17a2b8;">📥 Importa Excel</button></form><a href="/export_stewards" class="btn" style="background:#28a745;">📄 Esporta Excel</a><a href="/export_stewards_pdf" class="btn" style="background:#e74c3c;">📄 Esporta PDF</a></div>{{ search_html|safe }}<table><tr><th>Nome</th><th>Cognome</th><th>Email</th><th>Telefono</th><th>Codice Fiscale</th><th>Scadenza</th><th>Documenti</th><th>Azioni</th></tr>{{ table_rows|safe }}</table></div></body></html>
-    ''', messages_html=messages_html, search_html=search_html, table_rows=table_rows)
-    return table_html
-
-# 5. FUNZIONI IMPORT/EXPORT EXCEL
-@app.route('/import_stewards', methods=['POST'])
-def import_stewards():
-    if 'file' not in request.files:
-        flash('⚠️ Nessun file selezionato!', 'warning')
-        return redirect(url_for('stewards'))
-    
-    file = request.files['file']
-    if file.filename == '':
-        flash('⚠️ Nessun file selezionato!', 'warning')
-        return redirect(url_for('stewards'))
-    
-    if file.filename and not file.filename.lower().endswith(('.xlsx', '.xls')):
-        flash('⚠️ Il file deve essere in formato Excel (.xlsx o .xls)!', 'warning')
-        return redirect(url_for('stewards'))
-    
-    try:
-        # Leggi il file Excel
-        df = pd.read_excel(file)
-        # Pulisci i nomi delle colonne per robustezza (minuscolo, senza spazi)
-        df.columns = [str(col).strip().lower() for col in df.columns]
-        
-        # Mappatura colonne italiane -> nomi modello (tutto minuscolo)
-        col_map = {
-            'nome': 'nome',
-            'cognome': 'cognome',
-            'email': 'email',
-            'telefono': 'phone',
-            'indirizzo': 'address',
-            'codice fiscale': 'tax_code',
-            'iban': 'iban',
-            'tipo documento': 'document_type',
-            'numero documento': 'document_number',
-            'scadenza': 'document_expiry',
-            'esperienza': 'experience'
-        }
-        df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
-        
-        required_columns = ['nome', 'cognome']
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            flash(f'⚠️ Colonne obbligatorie mancanti nel file Excel: {", ".join(missing_columns)}. Assicurati che il file contenga le colonne "Nome" e "Cognome".', 'warning')
-            return redirect(url_for('stewards'))
-            
-        success_count = 0
-        error_count = 0
-        error_rows = []
-        for index, row in df.iterrows():
-            try:
-                # Controlla se nome o cognome sono vuoti
-                if pd.isna(row.get('nome')) or pd.isna(row.get('cognome')) or not str(row.get('nome')).strip() or not str(row.get('cognome')).strip(): # type: ignore
-                    error_count += 1
-                    error_rows.append(f"Riga {int(index) + 2}: Nome o Cognome mancanti.") # type: ignore
-                    continue
-
-                # Controllo duplicati
-                existing_steward = None
-                if 'email' in df.columns and pd.notna(row.get('email')) and str(row.get('email')).strip(): # type: ignore
-                    existing_steward = Steward.query.filter_by(email=str(row['email']).strip()).first()
-                if not existing_steward and 'tax_code' in df.columns and pd.notna(row.get('tax_code')) and str(row.get('tax_code')).strip(): # type: ignore
-                    existing_steward = Steward.query.filter_by(tax_code=str(row['tax_code']).strip()).first()
-                
-                if existing_steward:
-                    error_count += 1
-                    error_rows.append(f"Riga {int(index) + 2}: Steward già esistente (email/codice fiscale).") # type: ignore
-                    continue
-
-                # Gestione data di scadenza
-                expiry_date = None
-                if 'document_expiry' in df.columns and pd.notna(row.get('document_expiry')): # type: ignore
-                    try:
-                        expiry_date = pd.to_datetime(row['document_expiry']).date() # type: ignore
-                    except (ValueError, TypeError):
-                        error_rows.append(f"Riga {int(index) + 2}: Formato data scadenza non valido per '{row['document_expiry']}'.") # type: ignore
-
-                new_steward = Steward(
-                    nome=str(row['nome']).strip(),
-                    cognome=str(row['cognome']).strip(),
-                    email=str(row.get('email', '')).strip() or None,
-                    phone=str(row.get('phone', '')).strip() or None,
-                    address=str(row.get('address', '')).strip() or None,
-                    tax_code=str(row.get('tax_code', '')).strip() or None,
-                    iban=str(row.get('iban', '')).strip() or None,
-                    document_type=str(row.get('document_type', '')).strip() or None,
-                    document_number=str(row.get('document_number', '')).strip() or None,
-                    document_expiry=expiry_date,
-                    experience=str(row.get('experience', '')).strip() or None,
-                    carta_identita_path='',
-                    codice_fiscale_path='',
-                    attestato_path='',
-                    autocertificazione_path='',
-                    patente_path=''
-                )
-                db.session.add(new_steward)
-                success_count += 1
-            except Exception as e:
-                error_count += 1
-                db.session.rollback()
-                error_rows.append(f"Riga {int(index) + 2}: Errore generico - {e}") # type: ignore
-                continue
-        
-        db.session.commit()
-        
-        if success_count > 0:
-            flash(f'✅ Importazione completata! {success_count} steward importati con successo.', 'success')
-        if error_count > 0:
-            error_details = "\\n".join(error_rows)
-            flash(f'⚠️ {error_count} record non importati a causa di errori. Controlla il file Excel. Dettagli: {error_details}', 'warning')
-
-    except Exception as e:
-        flash(f'❌ Errore critico durante la lettura del file Excel: {str(e)}', 'error')
-    return redirect(url_for('stewards'))
-
-@app.route('/export_stewards')
-def export_stewards():
-    try:
-        stewards = Steward.query.all()
-        data = []
-        for steward in stewards:
-            data.append({
-                'Nome': steward.nome,
-                'Cognome': steward.cognome,
-                'Email': steward.email or '',
-                'Telefono': steward.phone or '',
-                'Indirizzo': steward.address or '',
-                'Codice Fiscale': steward.tax_code or '',
-                'IBAN': steward.iban or '',
-                'Tipo Documento': steward.document_type or '',
-                'Numero Documento': steward.document_number or '',
-                'Scadenza': steward.document_expiry.strftime('%d/%m/%Y') if steward.document_expiry else '',
-                'Esperienza': steward.experience or ''
-            })
-        df = pd.DataFrame(data)
-        output = io.BytesIO()
-        # Correzione: engine specificato e uso di BytesIO supportato da pandas >=1.2
-        with pd.ExcelWriter(output, engine='openpyxl') as writer: # type: ignore
-            df.to_excel(writer, sheet_name='Steward', index=False)
-        output.seek(0)
-        flash('✅ Esportazione completata con successo!', 'success')
-        return send_file(
-            output,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=f'steward_export_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
-        )
-    except Exception as e:
-        flash(f'❌ Errore durante l\'esportazione: {str(e)}', 'error')
-        return redirect(url_for('stewards'))
-
-@app.route('/export_stewards_pdf')
-def export_stewards_pdf():
-    try:
-        stewards = Steward.query.all()
-        buffer = io.BytesIO()
-        p = canvas.Canvas(buffer, pagesize=A4)
-        width, height = A4
-        y = height - 40
-        p.setFont("Helvetica-Bold", 16)
-        p.drawString(40, y, "Elenco Steward")
-        y -= 30
-        p.setFont("Helvetica", 10)
-        for s in stewards:
-            line = f"{s.nome} {s.cognome} | Email: {s.email or ''} | Tel: {s.phone or ''} | Cod. Fiscale: {s.tax_code or ''} | Scadenza: {s.document_expiry.strftime('%d/%m/%Y') if s.document_expiry else ''}"
-            p.drawString(40, y, line)
-            y -= 18
-            if y < 50:
-                p.showPage()
-                y = height - 40
-        p.save()
-        buffer.seek(0)
-        return send_file(buffer, as_attachment=True, download_name=f'steward_export_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf', mimetype='application/pdf')
-    except Exception as e:
-        flash(f'❌ Errore durante l\'esportazione PDF: {str(e)}', 'error')
-        return redirect(url_for('stewards'))
-
-@app.route('/export_steward_pdf/<int:steward_id>', methods=['GET', 'POST'])
-def export_steward_pdf(steward_id):
-    import os
-    from flask import request
-    steward = Steward.query.get_or_404(steward_id)
-    fields = [
-        ('nome', 'Nome'),
-        ('cognome', 'Cognome'),
-        ('email', 'Email'),
-        ('phone', 'Telefono'),
-        ('address', 'Indirizzo'),
-        ('tax_code', 'Codice Fiscale'),
-        ('iban', 'IBAN'),
-        ('document_type', 'Tipo Documento'),
-        ('document_number', 'Numero Documento'),
-        ('document_expiry', 'Scadenza Documento'),
-        ('experience', 'Esperienza'),
-    ]
-    preselected = {'nome', 'cognome', 'email', 'tax_code'}
-    if request.method == 'POST':
-        selected = request.form.getlist('fields')
-        if not selected:
-            return 'Seleziona almeno un campo', 400
-        from reportlab.lib.pagesizes import A4
-        from reportlab.pdfgen import canvas
-        pdf_filename = f'steward_{steward.id}_{steward.nome}_{steward.cognome}.pdf'
-        pdf_path = os.path.join('uploads', pdf_filename)
-        buffer = open(pdf_path, 'wb')
-        p = canvas.Canvas(buffer, pagesize=A4)
-        width, height = A4
-        y = height - 40
-        p.setFont("Helvetica-Bold", 16)
-        p.drawString(40, y, f"Dati Steward: {steward.nome} {steward.cognome}")
-        y -= 30
-        p.setFont("Helvetica", 10)
-        for key, label in fields:
-            if key in selected:
-                value = getattr(steward, key, '')
-                if value is None:
-                    value = ''
-                if key == 'document_expiry' and value:
-                    if isinstance(value, datetime.date):
-                        value = value.strftime('%d/%m/%Y')
-                p.drawString(40, y, f"{label}: {value}")
-                y -= 18
-        p.save()
-        buffer.close()
-        
-        # Link pubblico
-        pdf_url = f"/uploads/{pdf_filename}"
-        full_pdf_url = f"{request.host_url.strip('/')}{pdf_url}"
-        
-        # Messaggio per WhatsApp
-        whatsapp_msg = f"PDF dello steward {steward.nome} {steward.cognome}: {full_pdf_url}"
-        whatsapp_url = f"https://wa.me/?text={whatsapp_msg.replace(' ', '%20').replace(':', '%3A').replace('/', '%2F')}"
-        
-        # Email
-        email_subject = f"PDF Steward {steward.nome} {steward.cognome}"
-        email_body = f"Ecco il PDF dello steward {steward.nome} {steward.cognome}:\n\n{full_pdf_url}"
-        mailto_url = f"mailto:?subject={email_subject.replace(' ', '%20')}&body={email_body.replace(' ', '%20').replace('\n', '%0A')}"
-        
-        return render_template_string('''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>PDF Generato</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body { font-family: Arial, sans-serif; margin: 0; background: #f4f4f9; }
-                .container { max-width: 800px; margin: 20px auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-                .header { background: #667eea; color: white; padding: 15px 30px; text-align: center; font-size: 1.5em; }
-                .btn { display: inline-block; padding: 12px 24px; margin: 10px 5px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
-                .btn-whatsapp { background: #25d366; }
-                .btn-email { background: #0072c6; }
-                .btn-download { background: #28a745; }
-                .btn-back { background: #6c757d; }
-                .link-box { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #dee2e6; }
-                .link-input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; }
-                .instructions { background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #0072c6; }
-                .warning { background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">PDF Generato con Successo</div>
-                
-                <h2>PDF per {{ steward.nome }} {{ steward.cognome }}</h2>
-                
-                <div class="instructions">
-                    <strong>📋 Istruzioni per la condivisione:</strong><br>
-                    1. Scarica il PDF cliccando su "Scarica PDF"<br>
-                    2. Per WhatsApp: clicca su "Condividi su WhatsApp" o copia il link manualmente<br>
-                    3. Per Email: clicca su "Invia via Email" o copia il link nel messaggio
-                </div>
-                
-                <div class="warning">
-                    <strong>⚠️ Nota importante:</strong><br>
-                    WhatsApp Web non può inviare file direttamente. Il link aprirà WhatsApp con un messaggio contenente il link al PDF. 
-                    Il destinatario dovrà cliccare sul link per scaricare il PDF.
-                </div>
-                
-                <a href="{{ pdf_url }}" class="btn btn-download" target="_blank">📥 Scarica PDF</a>
-                <a href="{{ whatsapp_url }}" class="btn btn-whatsapp" target="_blank">📱 Condividi su WhatsApp</a>
-                <a href="{{ mailto_url }}" class="btn btn-email" target="_blank">📧 Invia via Email</a>
-                <a href="/stewards" class="btn btn-back">← Torna alla gestione steward</a>
-                
-                <div class="link-box">
-                    <strong>🔗 Link diretto al PDF:</strong><br>
-                    <input type="text" value="{{ full_pdf_url }}" class="link-input" readonly onclick="this.select();document.execCommand('copy');" title="Clicca per copiare">
-                    <br><small>Clicca sul link per copiarlo negli appunti</small>
-                </div>
-                
-                <div class="link-box">
-                    <strong>📱 Messaggio per WhatsApp:</strong><br>
-                    <textarea class="link-input" rows="3" readonly onclick="this.select();document.execCommand('copy');" title="Clicca per copiare">{{ whatsapp_msg }}</textarea>
-                    <br><small>Clicca sul testo per copiarlo negli appunti</small>
-                </div>
-            </div>
-        </body>
-        </html>
-        ''', steward=steward, pdf_url=pdf_url, full_pdf_url=full_pdf_url, whatsapp_url=whatsapp_url, mailto_url=mailto_url, whatsapp_msg=whatsapp_msg)
-    
-    # GET: mostra il form di selezione campi
-    return render_template_string('''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Esporta PDF Steward</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body { font-family: Arial, sans-serif; margin: 0; background: #f4f4f9; }
-            .container { max-width: 600px; margin: 20px auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-            .header { background: #667eea; color: white; padding: 15px 30px; text-align: center; font-size: 1.5em; margin: -30px -30px 30px -30px; border-radius: 10px 10px 0 0; }
-            .form-group { margin-bottom: 15px; }
-            .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
-            .checkbox-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 20px 0; }
-            .checkbox-item { display: flex; align-items: center; gap: 8px; }
-            .btn { padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; text-decoration: none; display: inline-block; margin: 5px; }
-            .btn-secondary { background: #6c757d; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">Esporta PDF Steward</div>
-            
-            <h2>{{ steward.nome }} {{ steward.cognome }}</h2>
-            
-            <form method="post">
-                <div class="form-group">
-                    <label>Seleziona i campi da includere nel PDF:</label>
-                    <div class="checkbox-group">
-                        {% for key, label in fields %}
-                            <div class="checkbox-item">
-                                <input type="checkbox" name="fields" value="{{ key }}" id="{{ key }}" {% if key in preselected %}checked{% endif %}>
-                                <label for="{{ key }}">{{ label }}</label>
-                            </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                
-                <button type="submit" class="btn">📄 Genera PDF</button>
-                <a href="/stewards" class="btn btn-secondary">❌ Annulla</a>
-            </form>
-        </div>
-    </body>
-    </html>
-    ''', steward=steward, fields=fields, preselected=preselected)
-
-# 6. PAGINE SEGNAPOSTO
-@app.route('/events', methods=['GET', 'POST'])
-def events():
-    if request.method == 'POST':
-        # Creazione nuovo evento
-        data_inizio_str = request.form.get('data_inizio')
-        data_fine_str = request.form.get('data_fine')
-        
-        if not data_inizio_str or not data_fine_str:
-            flash('⚠️ Data inizio e data fine sono obbligatorie!', 'warning')
-            return redirect(url_for('events'))
-        try:
-            data_inizio = datetime.datetime.strptime(data_inizio_str, '%Y-%m-%dT%H:%M')
-            data_fine = datetime.datetime.strptime(data_fine_str, '%Y-%m-%dT%H:%M')
-        except:
-            flash('⚠️ Formato data non valido!', 'warning')
-            return redirect(url_for('events'))
-        
-        if data_fine < data_inizio:
-            flash('⚠️ La data di fine deve essere successiva o uguale alla data di inizio!', 'warning')
-            return redirect(url_for('events'))
-        
-        budget = request.form.get('budget')
-        try:
-            budget = float(budget) if budget else None
-        except:
-            budget = None
-        
-        nuovo_evento = Evento(
-            nome=request.form.get('nome'),
-            descrizione=request.form.get('descrizione'),
-            data_inizio=data_inizio,
-            data_fine=data_fine,
-            luogo=request.form.get('luogo'),
-            tipo_evento=request.form.get('tipo_evento'),
-            stato=request.form.get('stato', 'pianificato'),
-            budget=budget,
-            note=request.form.get('note')
-        )
-        
-        db.session.add(nuovo_evento)
-        db.session.commit()
-        flash(f'✅ Evento "{nuovo_evento.nome}" creato con successo!', 'success')
-        return redirect(url_for('events'))
-    
-    # Eliminazione evento
-    delete_id = request.args.get('delete')
-    if delete_id and delete_id.isdigit():
-        evento = Evento.query.get(int(delete_id))
-        if evento:
-            # Elimina anche le partecipazioni associate
-            PartecipazioneEvento.query.filter_by(evento_id=evento.id).delete()
-            db.session.delete(evento)
-            db.session.commit()
-            flash(f'🗑️ Evento "{evento.nome}" eliminato.', 'success')
-            return redirect(url_for('events'))
-    
-    # Filtri
-    search_query = request.args.get('search', '').strip().lower()
-    stato_filter = request.args.get('stato', '')
-    tipo_filter = request.args.get('tipo', '')
-    data_da = request.args.get('data_da', '')
-    data_a = request.args.get('data_a', '')
-    
-    # Query eventi con filtri
-    eventi_query = Evento.query
-    
-    if search_query:
-        eventi_query = eventi_query.filter(
-            db.or_(
-                Evento.nome.ilike(f'%{search_query}%'),
-                Evento.descrizione.ilike(f'%{search_query}%'),
-                Evento.luogo.ilike(f'%{search_query}%')
-            )
-        )
-    
-    if stato_filter:
-        eventi_query = eventi_query.filter(Evento.stato == stato_filter)
-    
-    if tipo_filter:
-        eventi_query = eventi_query.filter(Evento.tipo_evento == tipo_filter)
-    
-    if data_da:
-        try:
-            data_da_obj = datetime.datetime.strptime(data_da, '%Y-%m-%d')
-            eventi_query = eventi_query.filter(Evento.data_inizio >= data_da_obj)
-        except: pass
-    
-    if data_a:
-        try:
-            data_a_obj = datetime.datetime.strptime(data_a, '%Y-%m-%d')
-            eventi_query = eventi_query.filter(Evento.data_fine <= data_a_obj)
-        except: pass
-    
-    eventi = eventi_query.order_by(Evento.data_inizio.asc()).all()
-    
-    # Prepara i dati per la tabella
-    eventi_data = []
-    for e in eventi:
-        # Conta partecipanti
-        num_partecipanti = PartecipazioneEvento.query.filter_by(evento_id=e.id).count()
-        
-        # Determina colore stato
-        stato_colors = {
-            'pianificato': '#17a2b8',
-            'in_corso': '#28a745', 
-            'completato': '#6c757d',
-            'cancellato': '#dc3545'
-        }
-        stato_color = stato_colors.get(e.stato, '#6c757d')
-        
-        eventi_data.append({
-            'id': e.id,
-            'nome': e.nome,
-            'descrizione': e.descrizione,
-            'data_inizio': e.data_inizio.strftime('%d/%m/%Y %H:%M'),
-            'data_fine': e.data_fine.strftime('%d/%m/%Y %H:%M'),
-            'luogo': e.luogo or '',
-            'tipo_evento': e.tipo_evento or '',
-            'stato': e.stato,
-            'stato_color': stato_color,
-            'budget': f'{e.budget:.2f} €' if e.budget else '',
-            'num_partecipanti': num_partecipanti,
-            'note': e.note or ''
-        })
-    
-    # Prepara i messaggi flash
-    flash_messages = []
-    for c, m in get_flashed_messages(with_categories=True):
-        icon = "✅" if c == "success" else "❌" if c == "error" else "⚠️"
-        flash_messages.append({'category': c, 'message': m, 'icon': icon})
-    
-    # Form di ricerca e filtri
-    search_html = render_template_string('''
-    <form method="get" style="margin-bottom:20px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
-        <input type="text" name="search" placeholder="Cerca nome, descrizione, luogo" value="{{ search_value }}" style="padding:8px;border-radius:5px;border:1px solid #ccc;min-width:200px;">
-        <select name="stato" style="padding:8px;border-radius:5px;border:1px solid #ccc;">
-            <option value="">Tutti gli stati</option>
-            <option value="pianificato" {{ 'selected' if stato_filter == 'pianificato' else '' }}>Pianificato</option>
-            <option value="in_corso" {{ 'selected' if stato_filter == 'in_corso' else '' }}>In Corso</option>
-            <option value="completato" {{ 'selected' if stato_filter == 'completato' else '' }}>Completato</option>
-            <option value="cancellato" {{ 'selected' if stato_filter == 'cancellato' else '' }}>Cancellato</option>
-        </select>
-        <select name="tipo" style="padding:8px;border-radius:5px;border:1px solid #ccc;">
-            <option value="">Tutti i tipi</option>
-            <option value="Sportivo" {{ 'selected' if tipo_filter == 'Sportivo' else '' }}>Sportivo</option>
-            <option value="Culturale" {{ 'selected' if tipo_filter == 'Culturale' else '' }}>Culturale</option>
-            <option value="Musicale" {{ 'selected' if tipo_filter == 'Musicale' else '' }}>Musicale</option>
-            <option value="Religioso" {{ 'selected' if tipo_filter == 'Religioso' else '' }}>Religioso</option>
-            <option value="Altro" {{ 'selected' if tipo_filter == 'Altro' else '' }}>Altro</option>
-        </select>
-        <input type="date" name="data_da" placeholder="Data da" value="{{ data_da }}" style="padding:8px;border-radius:5px;border:1px solid #ccc;">
-        <input type="date" name="data_a" placeholder="Data a" value="{{ data_a }}" style="padding:8px;border-radius:5px;border:1px solid #ccc;">
-        <button type="submit" class="btn" style="background:#17a2b8;">🔍 Cerca/Filtra</button>
-        <a href="/events" class="btn" style="background:#aaa;">Azzera</a>
-    </form>
-    ''', search_value=request.args.get('search',''), stato_filter=stato_filter, tipo_filter=tipo_filter, data_da=data_da, data_a=data_a)
-    
-    return render_template_string('''
-    <!DOCTYPE html><html><head><title>Gestione Eventi</title><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{font-family:Arial,sans-serif;margin:0;background:#f4f4f9}.header{background:#667eea;color:white;padding:15px 30px;text-align:center;font-size:1.5em;position:relative}.container{padding:30px;max-width:1400px;margin:auto}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:10px;border:1px solid #ddd;text-align:left}th{background:#667eea;color:white}tr:nth-child(even){background:#f9f9f9}.btn{background:#667eea;color:white;padding:8px 15px;border:none;border-radius:5px;text-decoration:none;cursor:pointer;margin:2px}.btn:hover{background:#5a6fd8}.btn-danger{background:#dc3545}.btn-success{background:#28a745}.btn-warning{background:#ffc107;color:#212529}.btn-info{background:#17a2b8}.flash-message{padding:10px;margin-bottom:10px;border-radius:6px;text-align:center;display:flex;align-items:center;gap:10px;font-weight:bold}.flash-success{background-color:#d4edda;color:#155724;border:1px solid #c3e6cb}.flash-error{background-color:#f8d7da;color:#721c24;border:1px solid #f5c6cb}.flash-warning{background-color:#fff3cd;color:#856404;border:1px solid #ffeeba}.form-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}.form-row input,.form-row select,.form-row textarea{padding:8px;border-radius:5px;border:1px solid #ccc}.form-row textarea{resize:vertical;min-height:80px}.header-buttons{position:absolute;top:15px;right:30px}.header-buttons .btn{background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3)}.stato-badge{padding:4px 8px;border-radius:12px;color:white;font-size:0.8em;font-weight:bold}.event-actions{display:flex;flex-wrap:wrap;gap:5px}.event-actions .btn{font-size:0.8em;padding:4px 8px}</style></head><body><div class="header">Gestione Eventi<div class="header-buttons"><a href="/dashboard" class="btn">🏠 Dashboard</a></div></div><div class="container">{{ messages_html|safe }}{{ search_html|safe }}<form method="POST"><div class="form-row"><input type="text" name="nome" placeholder="Nome Evento *" required style="flex:2;"><input type="text" name="luogo" placeholder="Luogo" style="flex:1;"><select name="tipo_evento" style="flex:1;"><option value="">Tipo Evento</option><option value="Sportivo">Sportivo</option><option value="Culturale">Culturale</option><option value="Musicale">Musicale</option><option value="Religioso">Religioso</option><option value="Altro">Altro</option></select><select name="stato" style="flex:1;"><option value="pianificato">Pianificato</option><option value="in_corso">In Corso</option><option value="completato">Completato</option><option value="cancellato">Cancellato</option></select></div><div class="form-row"><input type="datetime-local" name="data_inizio" placeholder="Data Inizio *" required style="flex:1;"><input type="datetime-local" name="data_fine" placeholder="Data Fine *" required style="flex:1;"><input type="number" name="budget" placeholder="Budget (€)" step="0.01" style="flex:1;"></div><div class="form-row"><textarea name="descrizione" placeholder="Descrizione Evento" style="flex:2;"></textarea><textarea name="note" placeholder="Note" style="flex:1;"></textarea></div><button type="submit" class="btn">➕ Crea Evento</button></form><table><tr><th>Nome</th><th>Data Inizio</th><th>Data Fine</th><th>Luogo</th><th>Tipo</th><th>Stato</th><th>Budget</th><th>Partecipanti</th><th>Azioni</th></tr>{% for evento in eventi_data %}<tr><td><strong>{{ evento.nome }}</strong><br><small>{{ evento.descrizione[:50] }}{% if evento.descrizione|length > 50 %}...{% endif %}</small></td><td>{{ evento.data_inizio }}</td><td>{{ evento.data_fine }}</td><td>{{ evento.luogo }}</td><td>{{ evento.tipo_evento }}</td><td><span class="stato-badge" style="background-color:{{ evento.stato_color }};">{{ evento.stato|title }}</span></td><td>{{ evento.budget }}</td><td><span class="btn btn-info" style="background:#17a2b8;">{{ evento.num_partecipanti }}</span></td><td style="padding:8px;">
-                    <div style="display:flex;gap:5px;flex-wrap:wrap;">
-                        <a href="/event/{{ evento.id }}/edit" class="btn btn-info" style="font-size:0.7em;padding:4px 6px;">✏️</a>
-                        <a href="/event/{{ evento.id }}/stewards" class="btn btn-success" style="font-size:0.7em;padding:4px 6px;">👥</a>
-                        <a href="/event/{{ evento.id }}/delete" class="btn btn-danger" style="font-size:0.7em;padding:4px 6px;" onclick="return confirm('Eliminare questo evento?')">🗑️</a>
-                        <a href="/event/{{ evento.id }}/duplica" class="btn btn-secondary" style="font-size:0.7em;padding:4px 6px;">🔄</a>
-                    </div>
-                </td></tr>{% endfor %}</table></div></body></html>
-    ''', messages_html=''.join(f'<div class="flash-message flash-{m["category"]}"><span style="font-size:1.2em;">{m["icon"]}</span><span>{m["message"]}</span></div>' for m in flash_messages), search_html=search_html, eventi_data=eventi_data)
+        filtered_stewards.append(s)
+    return render_template('stewards.html', stewards=filtered_stewards, scadenza_limite=scadenza_limite, count_missing=count_missing, count_expiring=count_expiring, filter_missing=filter_missing, filter_expiring=filter_expiring)
 
 @app.route('/steward/<int:steward_id>/edit', methods=['GET', 'POST'])
 def edit_steward(steward_id):
@@ -1122,13 +524,11 @@ def download_document(steward_id, field):
 @app.route('/finanze', methods=['GET', 'POST'])
 def finanze():
     from werkzeug.utils import secure_filename
-    # Simulazione autenticazione: username da sessione o query (da integrare con login reale)
-    username = request.args.get('username', None)
+    # Prendi username dalla sessione di login
+    username = session.get('username', None)
     user = User.query.filter_by(username=username).first() if username else None
-    is_admin = username == 'admin'  # Sostituire con logica reale
-
+    is_admin = username == 'admin'
     print(f"[DEBUG] username: {username} | is_admin: {is_admin}")
-
     # Aggiunta movimento
     if request.method == 'POST':
         steward = Steward.query.filter_by(email=username).first() if user else None
@@ -1197,6 +597,26 @@ def finanze():
 
     # Applica filtri solo se movimenti è una query
     if not isinstance(movimenti, list):
+        if data_da:
+            try:
+                movimenti = movimenti.filter(MovimentoFinanziario.data >= datetime.datetime.strptime(data_da, '%Y-%m-%d').date())
+            except: pass
+        if data_a:
+            try:
+                movimenti = movimenti.filter(MovimentoFinanziario.data <= datetime.datetime.strptime(data_a, '%Y-%m-%d').date())
+            except: pass
+        if tipo_f and tipo_f in ['entrata', 'uscita']:
+            movimenti = movimenti.filter(MovimentoFinanziario.tipo == tipo_f)
+        if descr_f:
+            movimenti = movimenti.filter(MovimentoFinanziario.descrizione.ilike(f'%{descr_f}%'))
+        if imp_min:
+            try:
+                movimenti = movimenti.filter(MovimentoFinanziario.importo >= float(imp_min))
+            except: pass
+        if imp_max:
+            try:
+                movimenti = movimenti.filter(MovimentoFinanziario.importo <= float(imp_max))
+            except: pass
         movimenti_list = movimenti.all()
         print(f"[DEBUG] Movimenti trovati (query): {len(movimenti_list)}")
         movimenti = movimenti_list
@@ -1240,14 +660,18 @@ def download_allegato(mov_id):
 @app.route('/finanze_dashboard')
 def finanze_dashboard():
     import json
-    username = request.args.get('username', None)
+    # Usa username dalla querystring o dalla sessione
+    username = request.args.get('username') or session.get('username')
+    print(f'[DEBUG] Dashboard username: {username}')
     user = User.query.filter_by(username=username).first() if username else None
     is_admin = username == 'admin'
+    print(f'[DEBUG] is_admin: {is_admin}')
     if is_admin:
         movimenti = MovimentoFinanziario.query.order_by(MovimentoFinanziario.data.asc()).all()
     else:
         steward = Steward.query.filter_by(email=username).first() if user else None
         movimenti = MovimentoFinanziario.query.filter_by(steward_id=steward.id).order_by(MovimentoFinanziario.data.asc()).all() if steward else []
+    print(f'[DEBUG] Movimenti trovati: {len(movimenti)}')
     from collections import defaultdict
     saldo = 0
     saldo_per_data = []
@@ -1256,6 +680,7 @@ def finanze_dashboard():
     tipo_count = defaultdict(int)
     mesi_set = set()
     for m in movimenti:
+        print(f'[DEBUG] Movimento: id={m.id}, data={m.data}, importo={m.importo}, tipo={m.tipo}')
         if m.tipo == 'entrata':
             saldo += m.importo
             entrate_per_mese[m.data.strftime('%Y-%m')] += m.importo
@@ -1268,18 +693,23 @@ def finanze_dashboard():
     mesi = sorted(list(mesi_set))
     entrate = [entrate_per_mese[m] for m in mesi]
     uscite = [uscite_per_mese[m] for m in mesi]
-    
+    print(f'[DEBUG] saldo_per_data: {saldo_per_data}')
+    print(f'[DEBUG] mesi: {mesi}')
+    print(f'[DEBUG] entrate: {entrate}')
+    print(f'[DEBUG] uscite: {uscite}')
+    print(f'[DEBUG] tipo_labels: {list(tipo_count.keys())}')
+    print(f'[DEBUG] tipo_data: {list(tipo_count.values())}')
     # Converti i dizionari in liste per Jinja2
     tipo_labels = list(tipo_count.keys())
     tipo_data = list(tipo_count.values())
-    
     return render_template_string("""
     <!DOCTYPE html>
     <html>
     <head>
         <title>Dashboard Finanziaria</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.3/dist/chart.umd.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
         <style>
             body { font-family: Arial,sans-serif; margin:0; background:#f4f4f9; }
             .header { background:#667eea; color:white; padding:15px 30px; text-align:center; font-size:1.5em; }
@@ -1609,6 +1039,56 @@ def whatsapp_presenze(evento_id):
 @app.route('/event/<int:evento_id>/presenze', methods=['GET', 'POST'])
 def presenze_evento(evento_id):
     evento = Evento.query.get_or_404(evento_id)
+    # --- METEO ---
+    meteo_info = None
+    if evento.luogo and evento.data_inizio:
+        try:
+            geo_url = f"https://nominatim.openstreetmap.org/search?format=json&q={evento.luogo}"
+            geo_resp = requests.get(geo_url, headers={"User-Agent": "StewardApp/1.0"}, timeout=5)
+            geo_data = geo_resp.json()
+            if geo_data:
+                lat = geo_data[0]['lat']
+                lon = geo_data[0]['lon']
+                data_str = evento.data_inizio.strftime('%Y-%m-%d')
+                meteo_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&timezone=Europe/Rome&start_date={data_str}&end_date={data_str}"
+                meteo_resp = requests.get(meteo_url, timeout=5)
+                meteo_data = meteo_resp.json()
+                if 'daily' in meteo_data and meteo_data['daily']['time']:
+                    idx = 0
+                    tmax = meteo_data['daily']['temperature_2m_max'][idx]
+                    tmin = meteo_data['daily']['temperature_2m_min'][idx]
+                    rain = meteo_data['daily']['precipitation_sum'][idx]
+                    code = meteo_data['daily']['weathercode'][idx]
+                    code_map = {
+                        0: ("Soleggiato", "☀️"),
+                        1: ("Prevalentemente sereno", "🌤️"),
+                        2: ("Parzialmente nuvoloso", "⛅"),
+                        3: ("Coperto", "☁️"),
+                        45: ("Nebbia", "🌫️"),
+                        48: ("Nebbia gelata", "🌫️❄️"),
+                        51: ("Pioviggine leggera", "🌦️"),
+                        53: ("Pioviggine", "🌦️"),
+                        55: ("Pioviggine intensa", "🌧️"),
+                        61: ("Pioggia leggera", "🌦️"),
+                        63: ("Pioggia", "🌧️"),
+                        65: ("Pioggia intensa", "🌧️"),
+                        71: ("Neve leggera", "🌨️"),
+                        73: ("Neve", "🌨️"),
+                        75: ("Neve intensa", "❄️"),
+                        80: ("Rovesci leggeri", "🌦️"),
+                        81: ("Rovesci", "🌧️"),
+                        82: ("Rovesci forti", "⛈️"),
+                    }
+                    desc, icon = code_map.get(code, ("", "❓"))
+                    meteo_info = {
+                        'desc': desc,
+                        'icon': icon,
+                        'tmin': tmin,
+                        'tmax': tmax,
+                        'rain': rain
+                    }
+        except Exception as e:
+            meteo_info = {'desc': 'Errore nel recupero meteo', 'icon': '❓', 'tmin': '', 'tmax': '', 'rain': ''}
     filtro = request.args.get('filtro', 'tutti')
     partecipazioni_query = PartecipazioneEvento.query.filter_by(evento_id=evento_id).join(Steward).order_by(PartecipazioneEvento.numero_casacca, Steward.nome, Steward.cognome)
     partecipazioni = partecipazioni_query.all()
@@ -1654,7 +1134,7 @@ def presenze_evento(evento_id):
     # HTML
     return render_template_string('''
     <!DOCTYPE html><html><head><title>Presenze Evento</title><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{font-family:Arial,sans-serif;margin:0;background:#f4f4f9}.header{background:#667eea;color:white;padding:15px 30px;text-align:center;font-size:1.5em}.container{padding:30px;max-width:900px;margin:auto}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:10px;border:1px solid #ddd;text-align:left}th{background:#667eea;color:white}tr:nth-child(even){background:#f9f9f9}.btn{background:#667eea;color:white;padding:10px 20px;border:none;border-radius:5px;text-decoration:none;cursor:pointer;margin:5px}.btn-whatsapp{background:#25d366}.btn-save{background:#28a745}.btn-back{background:#6c757d}.btn-pay{background:#ffc107;color:#212529}.flash-message{padding:10px;margin-bottom:10px;border-radius:6px;text-align:center;font-weight:bold}.flash-success{background-color:#d4edda;color:#155724}.flash-error{background-color:#f8d7da;color:#721c24}</style></head><body><div class="header">Presenze - {{ evento.nome }}</div><div class="container">{% for c, m in get_flashed_messages(with_categories=True) %}<div class="flash-message flash-{{c}}">{{m}}</div>{% endfor %}<form method="POST"><table><tr><th>Casacca</th><th>Nome</th><th>Ruolo</th><th>Presente</th></tr>{{ table_rows|safe }}</table><button type="submit" class="btn btn-save">💾 Salva Presenze</button></form><div style="margin:20px 0;"><button class="btn btn-whatsapp" onclick="copyMsg()">📋 Copia lista WhatsApp</button> <a href="{{ whatsapp_url }}" target="_blank" class="btn btn-whatsapp">📱 Invia su WhatsApp</a> <a href="/event/{{ evento.id }}/genera_pagamenti" class="btn btn-pay">💶 Genera Pagamenti</a> <a href="/event/{{ evento.id }}/stewards" class="btn btn-back">← Torna a Gestione Steward</a></div><textarea id="msg" style="width:100%;height:100px;">{{ msg }}</textarea><script>function copyMsg(){var t=document.getElementById('msg');t.select();document.execCommand('copy');alert('Messaggio copiato!');}</script></div></body></html>
-    ''', evento=evento, partecipazioni=partecipazioni, table_rows=table_rows, msg=msg, whatsapp_url=whatsapp_url)
+    ''', evento=evento, partecipazioni=partecipazioni, table_rows=table_rows, msg=msg, whatsapp_url=whatsapp_url, meteo_info=meteo_info)
 
 @app.route('/event/<int:evento_id>/presenze_export_excel')
 def presenze_evento_export_excel(evento_id):
@@ -1927,12 +1407,31 @@ def duplica_evento(evento_id):
 
 @app.route('/stampa_eventi')
 def stampa_eventi():
+    from datetime import datetime
+    filtro = request.args.get('filtro', 'annuale')
     eventi = Evento.query.order_by(Evento.data_inizio.asc()).all()
+    titolo = "Elenco Eventi"
+    if filtro == 'annuale':
+        anno = datetime.now().year
+        eventi = [e for e in eventi if e.data_inizio.year == anno]
+        titolo = f"Elenco Eventi {anno}"
+    elif filtro == 'mensile':
+        mese = request.args.get('mese')
+        if mese:
+            anno, mese_num = map(int, mese.split('-'))
+            eventi = [e for e in eventi if e.data_inizio.year == anno and e.data_inizio.month == mese_num]
+            titolo = f"Elenco Eventi {mese_num:02d}/{anno}"
+    elif filtro == 'singolo':
+        evento_id = request.args.get('evento_id')
+        if evento_id:
+            eventi = [e for e in eventi if str(e.id) == str(evento_id)]
+            if eventi:
+                titolo = f"Evento: {eventi[0].nome} ({eventi[0].data_inizio.strftime('%d/%m/%Y')})"
     return render_template_string('''
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Stampa Eventi</title>
+        <title>{{ titolo }}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
             body { font-family: Arial,sans-serif; margin:0; background:#fff; }
@@ -1954,7 +1453,7 @@ def stampa_eventi():
         <div class="container">
             <a href="/dashboard" class="btn-back">← Torna alla Dashboard</a>
             <button class="btn-print" onclick="window.print()">🖨️ Stampa</button>
-            <h2>Elenco Eventi</h2>
+            <h2>{{ titolo }}</h2>
             <table>
                 <tr>
                     <th>Nome</th>
@@ -1982,7 +1481,7 @@ def stampa_eventi():
         </div>
     </body>
     </html>
-    ''', eventi=eventi)
+    ''', eventi=eventi, titolo=titolo)
 
 @app.route('/stampa_presenze')
 def stampa_presenze():
@@ -2123,19 +1622,556 @@ def autocomplete_citta():
     except Exception as e:
         return jsonify([])
 
-@app.before_first_request
-def ensure_admin():
-    # Crea utente admin se non esiste
-    if not User.query.filter_by(username='admin').first():
-        admin_user = User(username='admin', password_hash=generate_password_hash('admin12345', method='pbkdf2:sha256'))
-        db.session.add(admin_user)
+@app.route('/events', methods=['GET', 'POST'])
+def events():
+    if request.method == 'POST':
+        # Creazione nuovo evento
+        data_inizio_str = request.form.get('data_inizio')
+        data_fine_str = request.form.get('data_fine')
+        if not data_inizio_str or not data_fine_str:
+            flash('⚠️ Data inizio e fine obbligatorie!', 'warning')
+            return redirect(url_for('events'))
+        try:
+            data_inizio = datetime.datetime.strptime(data_inizio_str, '%Y-%m-%dT%H:%M')
+            data_fine = datetime.datetime.strptime(data_fine_str, '%Y-%m-%dT%H:%M')
+        except Exception:
+            flash('⚠️ Formato data non valido!', 'warning')
+            return redirect(url_for('events'))
+        if data_fine < data_inizio:
+            flash('⚠️ La data di fine deve essere successiva o uguale alla data di inizio!', 'warning')
+            return redirect(url_for('events'))
+        budget = request.form.get('budget')
+        try:
+            budget = float(budget) if budget else None
+        except Exception:
+            budget = None
+        nuovo_evento = Evento(
+            nome=request.form.get('nome'),
+            descrizione=request.form.get('descrizione'),
+            data_inizio=data_inizio,
+            data_fine=data_fine,
+            luogo=request.form.get('luogo'),
+            tipo_evento=request.form.get('tipo_evento'),
+            stato=request.form.get('stato', 'pianificato'),
+            budget=budget,
+            note=request.form.get('note')
+        )
+        db.session.add(nuovo_evento)
         db.session.commit()
-        print('Utente admin creato. Username: admin, Password: admin12345')
+        flash(f'✅ Evento "{nuovo_evento.nome}" creato con successo!', 'success')
+        return redirect(url_for('events'))
+    # Filtri di ricerca
+    search_query = request.args.get('search', '').strip().lower()
+    eventi_query = Evento.query
+    if search_query:
+        eventi_query = eventi_query.filter(
+            db.or_(
+                Evento.nome.ilike(f'%{search_query}%'),
+                Evento.descrizione.ilike(f'%{search_query}%'),
+                Evento.luogo.ilike(f'%{search_query}%')
+            )
+        )
+    eventi = eventi_query.order_by(Evento.data_inizio.asc()).all()
+    # Prepara i dati per la tabella
+    eventi_data = []
+    for e in eventi:
+        eventi_data.append({
+            'id': e.id,
+            'nome': e.nome,
+            'data_inizio': e.data_inizio.strftime('%d/%m/%Y %H:%M'),
+            'data_fine': e.data_fine.strftime('%d/%m/%Y %H:%M'),
+            'luogo': e.luogo or '',
+            'tipo_evento': e.tipo_evento or '',
+            'stato': e.stato,
+        })
+    return render_template('events.html', eventi=eventi_data)
 
+@app.route('/stewards/export_pdf')
+def export_stewards_pdf():
+    from io import BytesIO
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+    from reportlab.lib import colors
+    from reportlab.platypus import Table, TableStyle
+    from datetime import datetime, timedelta
+    scadenza_limite = (datetime.now() + timedelta(days=30)).date()
+    stewards_list = Steward.query.order_by(Steward.nome, Steward.cognome).all()
+    data = [["Nome", "Cognome", "Email", "Documenti Mancanti", "Documenti in Scadenza"]]
+    for s in stewards_list:
+        missing_docs = []
+        if not s.carta_identita_path:
+            missing_docs.append("Carta d'Identità")
+        if not s.codice_fiscale_path:
+            missing_docs.append("Codice Fiscale")
+        if not s.attestato_path:
+            missing_docs.append("Attestato")
+        if not s.autocertificazione_path:
+            missing_docs.append("Autocertificazione")
+        if not s.patente_path:
+            missing_docs.append("Patente")
+        is_expiring = s.document_expiry and s.document_expiry <= scadenza_limite
+        data.append([
+            s.nome,
+            s.cognome,
+            s.email or '',
+            ', '.join(missing_docs) if missing_docs else '-',
+            'SI' if is_expiring else '-'
+        ])
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(40, height - 40, "Stato Documenti Stewards")
+    c.setFont("Helvetica", 10)
+    table = Table(data, colWidths=[80, 80, 120, 120, 80])
+    style = TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.lightblue),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.black),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('BOTTOMPADDING', (0,0), (-1,0), 8),
+        ('BACKGROUND', (0,1), (-1,-1), colors.whitesmoke),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+    ])
+    table.setStyle(style)
+    table.wrapOn(c, width, height)
+    table_height = 20 * len(data)
+    table.drawOn(c, 40, height - 80 - table_height)
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name="stewards_documenti.pdf", mimetype='application/pdf')
 
+@app.route('/stewards/upload', methods=['POST'])
+def upload_steward_documents():
+    from werkzeug.utils import secure_filename
+    import os
+    allowed_ext = {'.jpg', '.jpeg', '.pdf'}
+    steward_id = request.form.get('steward_id')
+    files = request.files.getlist('files')
+    if not steward_id or not files:
+        flash('Seleziona uno steward e almeno un file.', 'warning')
+        return redirect(url_for('stewards'))
+    if len(files) > 10:
+        flash('Puoi caricare al massimo 10 file alla volta.', 'warning')
+        return redirect(url_for('stewards'))
+    steward = Steward.query.get(steward_id)
+    if not steward:
+        flash('Steward non trovato.', 'danger')
+        return redirect(url_for('stewards'))
+    upload_folder = os.path.join(os.getcwd(), 'uploads')
+    os.makedirs(upload_folder, exist_ok=True)
+    updated = False
+    for file in files:
+        if not file or not getattr(file, 'filename', None) or not isinstance(file.filename, str) or file.filename.strip() == '':
+            continue
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in allowed_ext:
+            flash(f"Tipo file non consentito: {file.filename}", 'warning')
+            continue
+        filename = secure_filename(f"{steward.id}_{file.filename}")
+        file_path = os.path.join(upload_folder, filename)
+        file.save(file_path)
+        # Associa file al campo giusto se riconoscibile dal nome
+        fname = file.filename.lower()
+        if 'identita' in fname:
+            steward.carta_identita_path = file_path
+            updated = True
+        elif 'fiscale' in fname:
+            steward.codice_fiscale_path = file_path
+            updated = True
+        elif 'attestato' in fname:
+            steward.attestato_path = file_path
+            updated = True
+        elif 'autocert' in fname:
+            steward.autocertificazione_path = file_path
+            updated = True
+        elif 'patente' in fname:
+            steward.patente_path = file_path
+            updated = True
+    if updated:
+        db.session.commit()
+        flash('Documenti caricati e associati correttamente!', 'success')
+    else:
+        flash('File caricati, ma nessun documento associato automaticamente. Rinomina i file per includere il tipo (identita, fiscale, attestato, autocert, patente).', 'info')
+    return redirect(url_for('stewards'))
+
+@app.route('/import_stewards', methods=['POST'])
+def import_stewards():
+    import pandas as pd
+    from flask import request, redirect, url_for, flash
+    if 'file' not in request.files:
+        flash('⚠️ Nessun file selezionato!', 'warning')
+        return redirect(url_for('stewards'))
+    file = request.files['file']
+    if file.filename == '':
+        flash('⚠️ Nessun file selezionato!', 'warning')
+        return redirect(url_for('stewards'))
+    if file.filename and not file.filename.lower().endswith(('.xlsx', '.xls')):
+        flash('⚠️ Il file deve essere in formato Excel (.xlsx o .xls)!', 'warning')
+        return redirect(url_for('stewards'))
+    try:
+        df = pd.read_excel(file)
+        col_map = {
+            'nome': 'nome',
+            'cognome': 'cognome',
+            'email': 'email',
+            'telefono': 'phone',
+            'indirizzo': 'address',
+            'codice fiscale': 'tax_code',
+            'iban': 'iban',
+            'tipo documento': 'document_type',
+            'numero documento': 'document_number',
+            'scadenza': 'document_expiry',
+            'esperienza': 'experience'
+        }
+        df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+        required_columns = ['nome', 'cognome']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            flash(f'⚠️ Colonne mancanti nel file Excel: {", ".join(missing_columns)}', 'warning')
+            return redirect(url_for('stewards'))
+        success_count = 0
+        error_count = 0
+        for index, row in df.iterrows():
+            try:
+                existing_steward = None
+                if 'email' in df.columns and row.get('email') is not None and str(row.get('email')).strip():
+                    existing_steward = Steward.query.filter_by(email=row['email']).first()
+                elif 'tax_code' in df.columns and row.get('tax_code') is not None and str(row.get('tax_code')).strip():
+                    existing_steward = Steward.query.filter_by(tax_code=row['tax_code']).first()
+                if existing_steward:
+                    error_count += 1
+                    continue
+                new_steward = Steward(
+                    nome=str(row['nome']).strip(),
+                    cognome=str(row['cognome']).strip(),
+                    email=str(row.get('email', '')).strip() if row.get('email') is not None and str(row.get('email')).strip() else None,
+                    phone=str(row.get('phone', '')).strip() if row.get('phone') is not None and str(row.get('phone')).strip() else None,
+                    address=str(row.get('address', '')).strip() if row.get('address') is not None and str(row.get('address')).strip() else None,
+                    tax_code=str(row.get('tax_code', '')).strip() if row.get('tax_code') is not None and str(row.get('tax_code')).strip() else None,
+                    iban=str(row.get('iban', '')).strip() if row.get('iban') is not None and str(row.get('iban')).strip() else None,
+                    document_type=str(row.get('document_type', '')).strip() if row.get('document_type') is not None and str(row.get('document_type')).strip() else None,
+                    document_number=str(row.get('document_number', '')).strip() if row.get('document_number') is not None and str(row.get('document_number')).strip() else None,
+                    experience=str(row.get('experience', '')).strip() if row.get('experience') is not None and str(row.get('experience')).strip() else None,
+                    carta_identita_path='',
+                    codice_fiscale_path='',
+                    attestato_path='',
+                    autocertificazione_path='',
+                    patente_path=''
+                )
+                db.session.add(new_steward)
+                success_count += 1
+            except Exception as e:
+                error_count += 1
+                continue
+        db.session.commit()
+        if success_count > 0:
+            flash(f'✅ Importazione completata! {success_count} steward importati con successo.', 'success')
+        if error_count > 0:
+            flash(f'⚠️ {error_count} record non importati (duplicati o errori).', 'warning')
+    except Exception as e:
+        flash(f'❌ Errore durante l\'importazione: {str(e)}', 'error')
+    return redirect(url_for('stewards'))
+
+@app.route('/stewards/add', methods=['GET', 'POST'])
+def add_steward():
+    print('DEBUG: Entrato in /stewards/add, metodo:', request.method)
+    import os
+    from werkzeug.utils import secure_filename
+    from datetime import datetime
+    if request.method == 'POST':
+        nome = request.form.get('nome')
+        cognome = request.form.get('cognome')
+        email = request.form.get('email')
+        phone = request.form.get('phone')
+        address = request.form.get('address')
+        tax_code = request.form.get('tax_code')
+        iban = request.form.get('iban')
+        document_type = request.form.get('document_type')
+        document_number = request.form.get('document_number')
+        expiry_date_str = request.form.get('document_expiry')
+        experience = request.form.get('experience')
+        document_expiry = datetime.strptime(expiry_date_str, '%Y-%m-%d').date() if expiry_date_str else None
+
+        # Upload documenti
+        upload_folder = os.path.join(os.getcwd(), 'uploads')
+        os.makedirs(upload_folder, exist_ok=True)
+        def save_file(field_name):
+            file = request.files.get(field_name)
+            if not file or file.filename == '':
+                return ''
+            filename_str = file.filename or ''
+            ext = os.path.splitext(filename_str)[1].lower()
+            if ext not in ['.jpg', '.jpeg', '.pdf']:
+                flash(f"Il file per {field_name.replace('_', ' ').title()} deve essere JPG o PDF", 'warning')
+                return ''
+            filename = secure_filename(f"{field_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}")
+            file_path = os.path.join(upload_folder, filename)
+            file.save(file_path)
+            return file_path
+        carta_identita_path = save_file('carta_identita')
+        codice_fiscale_path = save_file('codice_fiscale')
+        attestato_path = save_file('attestato')
+        autocertificazione_path = save_file('autocertificazione')
+        patente_path = save_file('patente')
+
+        # Controllo duplicati
+        if email and Steward.query.filter_by(email=email).first():
+            flash('Esiste già uno steward con questa email.', 'danger')
+            return redirect(url_for('add_steward'))
+        if tax_code and Steward.query.filter_by(tax_code=tax_code).first():
+            flash('Esiste già uno steward con questo codice fiscale.', 'danger')
+            return redirect(url_for('add_steward'))
+        if not nome or not cognome:
+            flash('Nome e cognome sono obbligatori.', 'warning')
+            return redirect(url_for('add_steward'))
+
+        new_steward = Steward(
+            nome=nome,
+            cognome=cognome,
+            email=email,
+            phone=phone,
+            address=address,
+            tax_code=tax_code,
+            iban=iban,
+            document_type=document_type,
+            document_number=document_number,
+            document_expiry=document_expiry,
+            experience=experience,
+            carta_identita_path=carta_identita_path,
+            codice_fiscale_path=codice_fiscale_path,
+            attestato_path=attestato_path,
+            autocertificazione_path=autocertificazione_path,
+            patente_path=patente_path
+        )
+        db.session.add(new_steward)
+        db.session.commit()
+        flash('Steward aggiunto con successo!', 'success')
+        return redirect(url_for('stewards'))
+    return render_template('add_steward.html')
+
+@app.route('/export_stewards')
+def export_stewards():
+    import pandas as pd
+    import io
+    from flask import send_file, flash
+    from datetime import datetime
+    try:
+        stewards = Steward.query.all()
+        data = []
+        for steward in stewards:
+            data.append({
+                'Nome': steward.nome,
+                'Cognome': steward.cognome,
+                'Email': steward.email or '',
+                'Telefono': steward.phone or '',
+                'Indirizzo': steward.address or '',
+                'Codice Fiscale': steward.tax_code or '',
+                'IBAN': steward.iban or '',
+                'Tipo Documento': steward.document_type or '',
+                'Numero Documento': steward.document_number or '',
+                'Scadenza': steward.document_expiry.strftime('%d/%m/%Y') if steward.document_expiry else '',
+                'Esperienza': steward.experience or ''
+            })
+        df = pd.DataFrame(data)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={}) as writer:
+            df.to_excel(writer, sheet_name='Steward', index=False)
+        output.seek(0)
+        flash('✅ Esportazione completata con successo!', 'success')
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'steward_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+    except Exception as e:
+        flash(f'❌ Errore durante l\'esportazione: {str(e)}', 'error')
+        return redirect(url_for('stewards'))
+
+@app.route('/reset_admin')
+def reset_admin():
+    from werkzeug.security import generate_password_hash
+    admin = User.query.filter_by(username='admin').first()
+    if not admin:
+        admin = User(username='admin', email='admin@admin.com', nome='Admin', cognome='Admin', ruolo='admin')
+        db.session.add(admin)
+    admin.password_hash = generate_password_hash('admin123')
+    db.session.commit()
+    return 'Password admin resettata! Username: admin, Password: admin123'
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+@app.route('/esporta_eventi')
+def esporta_eventi():
+    from datetime import datetime
+    import io
+    import pandas as pd
+    from flask import send_file
+    filtro = request.args.get('filtro', 'annuale')
+    formato = request.args.get('formato', 'pdf')
+    eventi = Evento.query.order_by(Evento.data_inizio.asc()).all()
+    titolo = "Elenco Eventi"
+    if filtro == 'annuale':
+        anno = datetime.now().year
+        eventi = [e for e in eventi if e.data_inizio.year == anno]
+        titolo = f"Elenco Eventi {anno}"
+    elif filtro == 'mensile':
+        mese = request.args.get('mese')
+        if mese:
+            anno, mese_num = map(int, mese.split('-'))
+            eventi = [e for e in eventi if e.data_inizio.year == anno and e.data_inizio.month == mese_num]
+            titolo = f"Elenco Eventi {mese_num:02d}/{anno}"
+    elif filtro == 'singolo':
+        evento_id = request.args.get('evento_id')
+        if evento_id:
+            eventi = [e for e in eventi if str(e.id) == str(evento_id)]
+            if eventi:
+                titolo = f"Evento: {eventi[0].nome} ({eventi[0].data_inizio.strftime('%d/%m/%Y')})"
+    # Preparo dati per tabella
+    rows = []
+    for e in eventi:
+        partecipanti = ', '.join([f"{p.steward.nome} {p.steward.cognome}" for p in e.partecipazioni])
+        rows.append({
+            'Nome': e.nome,
+            'Data Inizio': e.data_inizio.strftime('%d/%m/%Y %H:%M'),
+            'Data Fine': e.data_fine.strftime('%d/%m/%Y %H:%M'),
+            'Luogo': e.luogo or '',
+            'Tipo': e.tipo_evento or '',
+            'Stato': e.stato,
+            'Budget': f'{e.budget:.2f} €' if e.budget else '',
+            'Note': e.note or '',
+            'Partecipanti': partecipanti
+        })
+    df = pd.DataFrame(rows)
+    if formato == 'excel':
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={}) as writer:
+            df.to_excel(writer, index=False, sheet_name='Eventi')
+        output.seek(0)
+        return send_file(output, download_name='elenco_eventi.xlsx', as_attachment=True)
+    else:  # PDF
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.units import cm
+        output = io.BytesIO()
+        c = canvas.Canvas(output, pagesize=A4)
+        width, height = A4
+        c.setFont('Helvetica-Bold', 16)
+        c.drawString(2*cm, height-2*cm, titolo)
+        c.setFont('Helvetica', 10)
+        y = height-3*cm
+        for row in rows:
+            text = f"{row['Nome']} | {row['Data Inizio']} - {row['Data Fine']} | {row['Luogo']} | {row['Tipo']} | {row['Stato']} | {row['Budget']} | {row['Note']}"
+            c.drawString(2*cm, y, text)
+            y -= 0.7*cm
+            c.setFont('Helvetica-Oblique', 9)
+            c.drawString(2.5*cm, y, f"Partecipanti: {row['Partecipanti']}")
+            y -= 1*cm
+            c.setFont('Helvetica', 10)
+            if y < 3*cm:
+                c.showPage()
+                y = height-2*cm
+                c.setFont('Helvetica', 10)
+        c.save()
+        output.seek(0)
+        return send_file(output, download_name='elenco_eventi.pdf', as_attachment=True, mimetype='application/pdf')
+
+@app.route('/event/<int:evento_id>/edit', methods=['GET', 'POST'])
+def edit_event(evento_id):
+    evento = Evento.query.get_or_404(evento_id)
+    if request.method == 'POST':
+        data_inizio_str = request.form.get('data_inizio')
+        data_fine_str = request.form.get('data_fine')
+        if not data_inizio_str or not data_fine_str:
+            flash('⚠️ Data inizio e fine obbligatorie!', 'warning')
+            return redirect(url_for('edit_event', evento_id=evento_id))
+        try:
+            data_inizio = datetime.datetime.strptime(data_inizio_str, '%Y-%m-%dT%H:%M')
+            data_fine = datetime.datetime.strptime(data_fine_str, '%Y-%m-%dT%H:%M')
+        except Exception:
+            flash('⚠️ Formato data non valido!', 'warning')
+            return redirect(url_for('edit_event', evento_id=evento_id))
+        if data_fine < data_inizio:
+            flash('⚠️ La data di fine deve essere successiva o uguale alla data di inizio!', 'warning')
+            return redirect(url_for('edit_event', evento_id=evento_id))
+        budget = request.form.get('budget')
+        try:
+            budget = float(budget) if budget else None
+        except Exception:
+            budget = None
+        evento.nome = request.form.get('nome')
+        evento.descrizione = request.form.get('descrizione')
+        evento.data_inizio = data_inizio
+        evento.data_fine = data_fine
+        evento.luogo = request.form.get('luogo')
+        evento.tipo_evento = request.form.get('tipo_evento')
+        evento.stato = request.form.get('stato', 'pianificato')
+        evento.budget = budget
+        evento.note = request.form.get('note')
+        db.session.commit()
+        flash(f'✅ Evento "{evento.nome}" modificato con successo!', 'success')
+        return redirect(url_for('events'))
+    return render_template('edit_event.html', evento=evento)
+
+@app.route('/event/<int:evento_id>/delete')
+def delete_event(evento_id):
+    evento = Evento.query.get_or_404(evento_id)
+    nome_evento = evento.nome
+    db.session.delete(evento)
+    db.session.commit()
+    flash(f'✅ Evento "{nome_evento}" eliminato con successo!', 'success')
+    return redirect(url_for('events'))
+
+@app.route('/events/export')
+def export_events():
+    import pandas as pd
+    import io
+    from flask import send_file
+    from datetime import datetime
+    try:
+        eventi = Evento.query.order_by(Evento.data_inizio.asc()).all()
+        data = []
+        for evento in eventi:
+            data.append({
+                'Nome': evento.nome,
+                'Descrizione': evento.descrizione or '',
+                'Data Inizio': evento.data_inizio.strftime('%d/%m/%Y %H:%M'),
+                'Data Fine': evento.data_fine.strftime('%d/%m/%Y %H:%M'),
+                'Luogo': evento.luogo or '',
+                'Tipo Evento': evento.tipo_evento or '',
+                'Stato': evento.stato,
+                'Budget': f'{evento.budget:.2f} €' if evento.budget else '',
+                'Note': evento.note or '',
+                'Creato il': evento.created_at.strftime('%d/%m/%Y %H:%M'),
+                'Aggiornato il': evento.updated_at.strftime('%d/%m/%Y %H:%M')
+            })
+        df = pd.DataFrame(data)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={}) as writer:
+            df.to_excel(writer, sheet_name='Eventi', index=False)
+        output.seek(0)
+        flash('✅ Esportazione eventi completata con successo!', 'success')
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'eventi_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+    except Exception as e:
+        flash(f'❌ Errore durante l\'esportazione: {str(e)}', 'error')
+        return redirect(url_for('events'))
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001, host='0.0.0.0')
+    print('ROUTES:')
+    for rule in app.url_map.iter_rules():
+        print(rule)
+    app.run(debug=True)
 
 # NON CI DEVE ESSERE ALTRO CODICE DOPO QUESTA RIGA
 

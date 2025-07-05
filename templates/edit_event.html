@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Modifica Evento</title>
+    <style>
+        body { background: #f4f4f9; font-family: Arial, sans-serif; }
+        .container { background: #fff; border-radius: 20px; max-width: 800px; margin: 40px auto; padding: 40px 30px; box-shadow: 0 0 20px #757de8; }
+        h2 { text-align: center; margin-bottom: 30px; font-size: 2.2em; }
+        .form-container { background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .form-row { display: flex; gap: 15px; margin-bottom: 15px; }
+        .form-group { flex: 1; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .form-group textarea { height: 80px; resize: vertical; }
+        .btn { background: #757de8; color: #fff; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 1em; margin: 5px; }
+        .btn:hover { background: #5c6bc0; }
+        .btn-success { background: #28a745; }
+        .btn-success:hover { background: #218838; }
+        .btn-secondary { background: #6c757d; }
+        .btn-secondary:hover { background: #5a6268; }
+        .flash { background: #ffe082; color: #333; padding: 10px; border-radius: 6px; margin-bottom: 20px; text-align: center; }
+        .actions { text-align: center; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:10px;">
+        <a href="/dashboard" class="btn" style="background:#757de8;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:bold;">🏠 Dashboard</a>
+    </div>
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <h2>✏️ Modifica Evento</h2>
+        
+        <div class="form-container">
+            <form method="POST">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Nome Evento*</label>
+                        <input type="text" name="nome" value="{{ evento.nome }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo Evento</label>
+                        <select name="tipo_evento">
+                            <option value="">Seleziona tipo</option>
+                            <option value="Sportivo" {% if evento.tipo_evento == 'Sportivo' %}selected{% endif %}>Sportivo</option>
+                            <option value="Culturale" {% if evento.tipo_evento == 'Culturale' %}selected{% endif %}>Culturale</option>
+                            <option value="Musicale" {% if evento.tipo_evento == 'Musicale' %}selected{% endif %}>Musicale</option>
+                            <option value="Teatrale" {% if evento.tipo_evento == 'Teatrale' %}selected{% endif %}>Teatrale</option>
+                            <option value="Conferenza" {% if evento.tipo_evento == 'Conferenza' %}selected{% endif %}>Conferenza</option>
+                            <option value="Altro" {% if evento.tipo_evento == 'Altro' %}selected{% endif %}>Altro</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Data e Ora Inizio*</label>
+                        <input type="datetime-local" name="data_inizio" value="{{ evento.data_inizio.strftime('%Y-%m-%dT%H:%M') }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Data e Ora Fine*</label>
+                        <input type="datetime-local" name="data_fine" value="{{ evento.data_fine.strftime('%Y-%m-%dT%H:%M') }}" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Luogo</label>
+                        <input type="text" name="luogo" value="{{ evento.luogo or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Budget (€)</label>
+                        <input type="number" name="budget" step="0.01" min="0" value="{{ evento.budget or '' }}">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Stato</label>
+                        <select name="stato">
+                            <option value="pianificato" {% if evento.stato == 'pianificato' %}selected{% endif %}>Pianificato</option>
+                            <option value="in_corso" {% if evento.stato == 'in_corso' %}selected{% endif %}>In Corso</option>
+                            <option value="completato" {% if evento.stato == 'completato' %}selected{% endif %}>Completato</option>
+                            <option value="cancellato" {% if evento.stato == 'cancellato' %}selected{% endif %}>Cancellato</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Descrizione</label>
+                    <textarea name="descrizione" placeholder="Descrizione dell'evento...">{{ evento.descrizione or '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label>Note</label>
+                    <textarea name="note" placeholder="Note aggiuntive...">{{ evento.note or '' }}</textarea>
+                </div>
+                <div class="actions">
+                    <button type="submit" class="btn btn-success">✅ Salva Modifiche</button>
+                    <a href="/events" class="btn btn-secondary">❌ Annulla</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html> 

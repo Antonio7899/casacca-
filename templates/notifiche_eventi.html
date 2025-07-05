@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Notifiche Eventi</title>
+    <style>
+        body { background: #f4f4f9; font-family: Arial, sans-serif; }
+        .container { background: #fff; border-radius: 20px; max-width: 1200px; margin: 40px auto; padding: 40px 30px; box-shadow: 0 0 20px #dc3545; }
+        h2 { text-align: center; margin-bottom: 30px; font-size: 2.2em; color: #dc3545; }
+        .section { margin-bottom: 30px; background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .section h3 { color: #333; }
+        .event-card { background: #f8f9fa; border-left: 4px solid #dc3545; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .event-card.urgent { border-left-color: #dc3545; background: #fff5f5; }
+        .event-card.warning { border-left-color: #ffc107; background: #fffbf0; }
+        .event-card.info { border-left-color: #17a2b8; background: #f0f8ff; }
+        .event-card.payment { border-left-color: #28a745; background: #f6fff6; }
+        .event-card h4 { margin: 0 0 10px 0; color: #333; }
+        .event-card p { margin: 5px 0; color: #666; }
+        .event-actions { display: flex; gap: 5px; margin-top: 10px; flex-wrap: wrap; }
+        .event-actions .btn { background: #757de8; color: #fff; padding: 6px 12px; border-radius: 5px; text-decoration: none; font-size: 0.9em; }
+        .event-actions .btn-success { background: #28a745; }
+        .event-actions .btn-warning { background: #ffc107; color: #212529; }
+        .event-actions .btn-info { background: #17a2b8; }
+        .no-events { color: #666; font-style: italic; text-align: center; padding: 20px; }
+    </style>
+</head>
+<body>
+    <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:10px;">
+        <a href="/dashboard" class="btn" style="background:#757de8;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:bold;">🏠 Dashboard</a>
+    </div>
+    <div class="container">
+        <h2>🚨 Notifiche Eventi</h2>
+        <div class="section">
+            <h3>💶 Eventi con Pagamenti in Sospeso - {{ eventi_pagamenti_sospesi|length }}</h3>
+            {% if eventi_pagamenti_sospesi %}
+                {% for evento, n_pag in eventi_pagamenti_sospesi %}
+                <div class="event-card payment">
+                    <h4>🏆 {{ evento.nome }}</h4>
+                    <p><strong>⏰ Inizio:</strong> {{ evento.data_inizio.strftime('%d/%m/%Y %H:%M') }}</p>
+                    <p><strong>📍 Luogo:</strong> {{ evento.luogo or 'Non specificato' }}</p>
+                    <p style="color:#dc3545;font-weight:bold;">⚠️ Pagamenti in sospeso: {{ n_pag }}</p>
+                    <div class="event-actions">
+                        <a href="/event/{{ evento.id }}/pagamenti" class="btn btn-success">💶 Gestisci Pagamenti</a>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="no-events">Nessun evento con pagamenti in sospeso.</p>
+            {% endif %}
+        </div>
+        <div class="section">
+            <h3>🚨 Eventi Urgenti (entro 6 ore) - {{ eventi_urgenti|length }}</h3>
+            {% if eventi_urgenti %}
+                {% for evento in eventi_urgenti %}
+                <div class="event-card urgent">
+                    <h4>🏆 {{ evento.nome }}</h4>
+                    <p><strong>⏰ Inizio:</strong> {{ evento.data_inizio.strftime('%d/%m/%Y %H:%M') }}</p>
+                    <p><strong>📍 Luogo:</strong> {{ evento.luogo or 'Non specificato' }}</p>
+                    <p><strong>👥 Steward:</strong> {{ evento.partecipazioni|length }} assegnati</p>
+                    <div class="event-actions">
+                        <a href="/event/{{ evento.id }}/stewards" class="btn btn-success">👥 Gestisci Steward</a>
+                        <a href="/event/{{ evento.id }}/whatsapp_sondaggio" class="btn btn-warning">📱 Sondaggio</a>
+                        <a href="/event/{{ evento.id }}/whatsapp_presenze" class="btn btn-info">👥 Presenze</a>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="no-events">Nessun evento urgente.</p>
+            {% endif %}
+        </div>
+        <div class="section">
+            <h3>⚠️ Eventi Imminenti (entro 24 ore) - {{ eventi_imminenti|length }}</h3>
+            {% if eventi_imminenti %}
+                {% for evento in eventi_imminenti %}
+                    {% if evento not in eventi_urgenti %}
+                    <div class="event-card warning">
+                        <h4>🏆 {{ evento.nome }}</h4>
+                        <p><strong>⏰ Inizio:</strong> {{ evento.data_inizio.strftime('%d/%m/%Y %H:%M') }}</p>
+                        <p><strong>📍 Luogo:</strong> {{ evento.luogo or 'Non specificato' }}</p>
+                        <p><strong>👥 Steward:</strong> {{ evento.partecipazioni|length }} assegnati</p>
+                        <div class="event-actions">
+                            <a href="/event/{{ evento.id }}/stewards" class="btn btn-success">👥 Gestisci Steward</a>
+                            <a href="/event/{{ evento.id }}/whatsapp_sondaggio" class="btn btn-warning">📱 Sondaggio</a>
+                            <a href="/event/{{ evento.id }}/whatsapp_presenze" class="btn btn-info">👥 Presenze</a>
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            {% else %}
+                <p class="no-events">Nessun evento imminente.</p>
+            {% endif %}
+        </div>
+        <div class="section">
+            <h3>ℹ️ Eventi Senza Steward - {{ eventi_senza_steward|length }}</h3>
+            {% if eventi_senza_steward %}
+                {% for evento in eventi_senza_steward %}
+                <div class="event-card info">
+                    <h4>🏆 {{ evento.nome }}</h4>
+                    <p><strong>⏰ Inizio:</strong> {{ evento.data_inizio.strftime('%d/%m/%Y %H:%M') }}</p>
+                    <p><strong>📍 Luogo:</strong> {{ evento.luogo or 'Non specificato' }}</p>
+                    <p><strong>⚠️ Nessuno steward assegnato!</strong></p>
+                    <div class="event-actions">
+                        <a href="/event/{{ evento.id }}/stewards" class="btn btn-success">👥 Assegna Steward</a>
+                        <a href="/event/{{ evento.id }}/edit" class="btn btn-info">✏️ Modifica</a>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="no-events">Tutti gli eventi hanno steward assegnati.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html> 

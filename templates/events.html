@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestione Eventi</title>
+    <style>
+        body { background: #f4f4f9; font-family: Arial, sans-serif; }
+        .container { background: #fff; border-radius: 20px; max-width: 1100px; margin: 40px auto; padding: 40px 30px; box-shadow: 0 0 20px #757de8; }
+        h2 { text-align: center; margin-bottom: 30px; font-size: 2.2em; }
+        .actions { margin-bottom: 20px; text-align: right; }
+        .actions a { background: #757de8; color: #fff; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-left: 10px; }
+        .actions a:hover { background: #5c6bc0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background: #757de8; color: #fff; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .btn { background: #757de8; color: #fff; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; text-decoration: none; font-size: 1em; }
+        .btn:hover { background: #5c6bc0; }
+        .flash { background: #ffe082; color: #333; padding: 10px; border-radius: 6px; margin-bottom: 20px; text-align: center; }
+        .search-form { margin-bottom: 20px; }
+        .search-form input { padding: 8px; border-radius: 5px; border: 1px solid #ccc; min-width: 220px; }
+        .form-container { background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .form-row { display: flex; gap: 15px; margin-bottom: 15px; }
+        .form-group { flex: 1; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .form-group textarea { height: 80px; resize: vertical; }
+        .btn-success { background: #28a745; }
+        .btn-success:hover { background: #218838; }
+        .toggle-form { background: #6c757d; color: #fff; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-bottom: 20px; display: inline-block; }
+        .toggle-form:hover { background: #5a6268; }
+    </style>
+</head>
+<body>
+    <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:10px;">
+        <a href="/dashboard" class="btn" style="background:#757de8;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:bold;">🏠 Dashboard</a>
+    </div>
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <h2>Gestione Eventi</h2>
+        
+        <!-- Form per aggiungere nuovo evento -->
+        <div class="form-container" id="addEventForm" style="display: none;">
+            <h3>➕ Crea Nuovo Evento</h3>
+            <form method="POST">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Nome Evento*</label>
+                        <input type="text" name="nome" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo Evento</label>
+                        <select name="tipo_evento">
+                            <option value="">Seleziona tipo</option>
+                            <option value="Sportivo">Sportivo</option>
+                            <option value="Culturale">Culturale</option>
+                            <option value="Musicale">Musicale</option>
+                            <option value="Teatrale">Teatrale</option>
+                            <option value="Conferenza">Conferenza</option>
+                            <option value="Altro">Altro</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Data e Ora Inizio*</label>
+                        <input type="datetime-local" name="data_inizio" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Data e Ora Fine*</label>
+                        <input type="datetime-local" name="data_fine" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Luogo</label>
+                        <input type="text" name="luogo">
+                    </div>
+                    <div class="form-group">
+                        <label>Budget (€)</label>
+                        <input type="number" name="budget" step="0.01" min="0">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Stato</label>
+                        <select name="stato">
+                            <option value="pianificato">Pianificato</option>
+                            <option value="in_corso">In Corso</option>
+                            <option value="completato">Completato</option>
+                            <option value="cancellato">Cancellato</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Descrizione</label>
+                    <textarea name="descrizione" placeholder="Descrizione dell'evento..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Note</label>
+                    <textarea name="note" placeholder="Note aggiuntive..."></textarea>
+                </div>
+                <div style="text-align: center;">
+                    <button type="submit" class="btn btn-success">✅ Crea Evento</button>
+                    <button type="button" class="btn" onclick="toggleForm()">❌ Annulla</button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="actions">
+            <a href="#" class="toggle-form" onclick="toggleForm()">➕ Crea Evento</a>
+            <a href="/events/export">📤 Esporta Excel</a>
+        </div>
+        <form class="search-form" method="get">
+            <input type="text" name="search" placeholder="Cerca nome, luogo, tipo evento" value="{{ request.args.get('search', '') }}">
+            <button class="btn" type="submit">🔍 Cerca</button>
+        </form>
+        <table>
+            <tr>
+                <th>Nome</th>
+                <th>Data Inizio</th>
+                <th>Data Fine</th>
+                <th>Luogo</th>
+                <th>Tipo</th>
+                <th>Stato</th>
+                <th>Azioni</th>
+            </tr>
+            {% for evento in eventi %}
+            <tr>
+                <td>{{ evento.nome }}</td>
+                <td>{{ evento.data_inizio }}</td>
+                <td>{{ evento.data_fine }}</td>
+                <td>{{ evento.luogo }}</td>
+                <td>{{ evento.tipo_evento }}</td>
+                <td>{{ evento.stato }}</td>
+                <td>
+                    <a class="btn" href="/event/{{ evento.id }}/edit">✏️ Modifica</a>
+                    <a class="btn" href="/event/{{ evento.id }}/delete" onclick="return confirm('Eliminare questo evento?')">🗑️ Elimina</a>
+                    <a class="btn" href="/event/{{ evento.id }}/stewards">👥 Steward</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    
+    <script>
+        function toggleForm() {
+            const form = document.getElementById('addEventForm');
+            if (form.style.display === 'none') {
+                form.style.display = 'block';
+            } else {
+                form.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html> 
