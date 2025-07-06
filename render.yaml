@@ -1,4 +1,5 @@
 # Exported from Render on 2025-07-01T20:15:01Z
+# Updated on 2025-07-06 to fix app.py deployment
 services:
 - type: web
   name: steward-app-antonio
