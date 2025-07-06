@@ -172,9 +172,41 @@ def register():
 
 @app.route('/dashboard')
 def dashboard():
-    return '''
-    <!DOCTYPE html><html><head><title>Dashboard</title><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{font-family:Arial,sans-serif;margin:0;background-color:#f4f4f9}.header{background:#667eea;color:white;padding:15px 30px;text-align:center;font-size:1.5em}.container{padding:30px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px}.card{background:white;padding:25px;border-radius:10px;box-shadow:0 5px 15px rgba(0,0,0,0.1);text-align:center}.card h3{margin-top:0;color:#333;font-size:1.4em}.btn{display:inline-block;margin-top:15px;padding:10px 20px;background:#667eea;color:white;text-decoration:none;border-radius:5px}.card.urgent{background:linear-gradient(135deg,#dc3545,#c82333);color:white}.card.urgent h3,.card.urgent p{color:white}</style></head><body><div class="header">Dashboard di Gestione</div><div class="container"><div class="card"><h3>👥 Gestione Steward</h3><p>Aggiungi o visualizza gli steward.</p><a href="/stewards" class="btn">Vai</a></div><div class="card"><h3>📅 Gestione Eventi</h3><p>Crea e gestisci gli eventi.</p><a href="/events" class="btn">Vai</a></div><div class="card urgent"><h3>🚨 Notifiche Eventi</h3><p>Controlla eventi imminenti e urgenti.</p><a href="/notifiche_eventi" class="btn">Vai</a></div><div class="card"><h3>💶 Gestione Finanze</h3><p>Visualizza e gestisci i movimenti finanziari.</p><a href="/finanze" class="btn">Vai</a></div><div class="card"><h3>⚙️ Logout</h3><p>Esci dall'applicazione.</p><a href="/" class="btn">Esci</a></div></div></body></html>
-    '''
+    # Esempio di raccolta dati, da adattare ai tuoi modelli e logica
+    num_stewards = Steward.query.count()
+    num_eventi = Evento.query.count()
+    saldo = db.session.query(db.func.sum(MovimentoFinanziario.importo)).scalar() or 0
+    eventi_imminenti = Evento.query.filter(Evento.data_inizio >= datetime.datetime.now(), Evento.data_inizio <= datetime.datetime.now() + datetime.timedelta(days=7)).count()
+    ultimi_eventi = Evento.query.order_by(Evento.data_inizio.desc()).limit(5).all()
+    # Dati per i grafici (esempio, da adattare)
+    tipo_labels = []
+    tipo_data = []
+    stato_labels = []
+    stato_data = []
+    mesi_ordinati = []
+    saldi_mensili = []
+    eventi_cal = []
+    holidays_list = []
+    sundays = []
+    meteo_info_dashboard = None
+    # TODO: Popola le variabili sopra con la tua logica reale
+    return render_template('dashboard.html',
+        num_stewards=num_stewards,
+        num_eventi=num_eventi,
+        saldo=saldo,
+        eventi_imminenti=eventi_imminenti,
+        ultimi_eventi=ultimi_eventi,
+        tipo_labels=tipo_labels,
+        tipo_data=tipo_data,
+        stato_labels=stato_labels,
+        stato_data=stato_data,
+        mesi_ordinati=mesi_ordinati,
+        saldi_mensili=saldi_mensili,
+        eventi_cal=eventi_cal,
+        holidays_list=holidays_list,
+        sundays=sundays,
+        meteo_info_dashboard=meteo_info_dashboard
+    )
     
 # 4. PAGINA ANAGRAFICA STEWARD
 @app.route('/stewards', methods=['GET', 'POST'])
