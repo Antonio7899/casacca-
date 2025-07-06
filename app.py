@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, url_for, flash, get_flashed_messages, send_file, render_template_string, send_from_directory
+from flask import Flask, request, redirect, url_for, flash, get_flashed_messages, send_file, render_template_string, render_template, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -1464,9 +1464,7 @@ def edit_event(evento_id):
     
     messages_html = ''.join(f'<div class="flash-message flash-{c}"><span style="font-size:1.2em;">{"✅" if c == "success" else "❌" if c == "error" else "⚠️"}</span><span>{m}</span></div>' for c, m in get_flashed_messages(with_categories=True))
     
-    return render_template_string('''
-    <!DOCTYPE html><html><head><title>Modifica Evento</title><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{font-family:Arial,sans-serif;margin:0;background:#f4f4f9}.header{background:#667eea;color:white;padding:15px 30px;text-align:center;font-size:1.5em;position:relative}.container{padding:30px;max-width:1200px;margin:auto}.btn{background:#667eea;color:white;padding:8px 15px;border:none;border-radius:5px;text-decoration:none;cursor:pointer;margin:2px}.btn:hover{background:#5a6fd8}.btn-danger{background:#dc3545}.btn-success{background:#28a745}.btn-warning{background:#ffc107;color:#212529}.btn-info{background:#17a2b8}.flash-message{padding:10px;margin-bottom:10px;border-radius:6px;text-align:center;display:flex;align-items:center;gap:10px;font-weight:bold}.flash-success{background-color:#d4edda;color:#155724;border:1px solid #c3e6cb}.flash-error{background-color:#f8d7da;color:#721c24;border:1px solid #f5c6cb}.flash-warning{background-color:#fff3cd;color:#856404;border:1px solid #ffeeba}.form-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}.form-row input,.form-row select,.form-row textarea{padding:8px;border-radius:5px;border:1px solid #ccc}.form-row textarea{resize:vertical;min-height:80px}.header-buttons{position:absolute;top:15px;right:30px}.header-buttons .btn{background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3)}</style></head><body><div class="header">Modifica Evento<div class="header-buttons"><a href="/events" class="btn">📋 Torna agli Eventi</a></div></div><div class="container">{{ messages_html|safe }}{{ form_html|safe }}</div></body></html>
-    ''', messages_html=messages_html, form_html=form_html)
+    return render_template('edit_event.html', evento=evento)
 
 @app.route('/event/<int:evento_id>/delete')
 def delete_event(evento_id):
