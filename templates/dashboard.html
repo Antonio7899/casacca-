@@ -121,7 +121,8 @@
                     <th style="padding:8px;">Stato</th>
                 </tr>
                 {% for e in ultimi_eventi %}
-                <tr style="background:{% if loop.index0%2==0 %}#f4f4f9{% else %}#fff{% endif %};">
+                {% set row_color = '#f4f4f9' if loop.index0 % 2 == 0 else '#fff' %}
+                <tr style="background-color: {{ row_color }};">
                     <td style="padding:8px;">{{ e.nome }}</td>
                     <td style="padding:8px;">{{ e.data_inizio.strftime('%d/%m/%Y %H:%M') }}</td>
                     <td style="padding:8px;">{{ e.stato|title }}</td>
@@ -157,7 +158,11 @@
                 <button id="btnElencoImpegni" style="background:#e53935;color:#fff;padding:12px 28px;font-size:1.1em;border:none;border-radius:8px;font-weight:bold;box-shadow:0 2px 8px #e53935;cursor:pointer;">📋 Genera Elenco Impegni</button>
                 <button id="btnExportPDF" style="background:#4caf50;color:#fff;padding:12px 18px;font-size:1.1em;border:none;border-radius:8px;font-weight:bold;box-shadow:0 2px 8px #4caf50;cursor:pointer;">⬇️ PDF</button>
                 <button id="btnExportExcel" style="background:#1976d2;color:#fff;padding:12px 18px;font-size:1.1em;border:none;border-radius:8px;font-weight:bold;box-shadow:0 2px 8px #1976d2;cursor:pointer;">⬇️ Excel</button>
+                <button id="btnCopyElenco" style="background:#ffb300;color:#fff;padding:12px 18px;font-size:1.1em;border:none;border-radius:8px;font-weight:bold;box-shadow:0 2px 8px #ffb300;cursor:pointer;">📋 Copia elenco</button>
             </div>
+        </div>
+        <div style="margin-top:15px;">
+            <textarea id="elencoImpegniText" style="width:100%;min-height:80px;font-family:monospace;font-size:1em;padding:10px;border-radius:8px;border:1px solid #ccc;" readonly placeholder="Qui apparirà l'elenco eventi pronto da copiare..."></textarea>
         </div>
         <!-- Modal scelta filtro elenco impegni -->
         <div id="modalImpegni" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.4);z-index:1000;align-items:center;justify-content:center;">
@@ -206,10 +211,15 @@
         }
         setInterval(updateDateTime, 1000);
         updateDateTime();
-        const tipoLabels = {{ tipo_labels|default([])|tojson }};
-        const tipoData = {{ tipo_data|default([])|tojson }};
-        const statoLabels = {{ stato_labels|default([])|tojson }};
-        const statoData = {{ stato_data|default([])|tojson }};
+        const tipoLabels = {{ tipo_labels|default([])|tojson|safe }};
+        const tipoData = {{ tipo_data|default([])|tojson|safe }};
+        const statoLabels = {{ stato_labels|default([])|tojson|safe }};
+        const statoData = {{ stato_data|default([])|tojson|safe }};
+        const mesiOrdinati = {{ mesi_ordinati|default([])|tojson|safe }};
+        const saldiMensili = {{ saldi_mensili|default([])|tojson|safe }};
+        var eventi_cal = {{ eventi_cal|default([])|tojson|safe }};
+        var holidays_list = {{ holidays_list|default([])|tojson|safe }};
+        var sundays = {{ sundays|default([])|tojson|safe }};
         new Chart(document.getElementById('tipoChart'), {
             type: 'doughnut',
             data: {
@@ -226,8 +236,6 @@
             options: { scales: { y: { beginAtZero: true } } }
         });
         // Saldo per mese
-        const mesiOrdinati = {{ mesi_ordinati|default([])|tojson }};
-        const saldiMensili = {{ saldi_mensili|default([])|tojson }};
         new Chart(document.getElementById('saldoMeseChart'), {
             type: 'line',
             data: {
@@ -240,11 +248,8 @@
         document.addEventListener('DOMContentLoaded', function() {
             var calendarEl = document.getElementById('calendar');
             if(calendarEl) {
-                var eventi = {{ eventi_cal|default([])|tojson }};
-                var holidays = {{ holidays_list|default([])|tojson }};
-                var sundays = {{ sundays|default([])|tojson }};
                 // Festività come eventi rossi
-                var holidayEvents = holidays.map(h => ({
+                var holidayEvents = holidays_list.map(h => ({
                     title: h.label,
                     start: h.date,
                     allDay: true,
@@ -262,7 +267,7 @@
                     extendedProps: { isSunday: true }
                 }));
                 // Eventi veri (azzurro/verde)
-                var eventEvents = eventi.map(ev => ({
+                var eventEvents = eventi_cal.map(ev => ({
                     title: ev.title,
                     start: ev.start,
                     end: ev.end,
@@ -351,6 +356,43 @@
                 }
             });
         }
+        // --- COPIA ELENCO IMPEGNI ---
+        document.getElementById('btnCopyElenco').onclick = function() {
+            var textarea = document.getElementById('elencoImpegniText');
+            var text = textarea ? textarea.value : '';
+            if (!text) {
+                alert('Nessun elenco da copiare! Genera prima l\'elenco.');
+                return;
+            }
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(function() {
+                    alert('Elenco copiato negli appunti!');
+                }, function() {
+                    textarea.select();
+                    document.execCommand('copy');
+                    alert('Elenco copiato negli appunti!');
+                });
+            } else {
+                textarea.select();
+                document.execCommand('copy');
+                alert('Elenco copiato negli appunti!');
+            }
+        };
+        // --- GENERA ELENCO TESTUALE ---
+        function aggiornaElencoImpegniText() {
+            // Prendi tutti gli eventi dal JS (eventi_cal)
+            var eventi = typeof eventi_cal !== 'undefined' ? eventi_cal : [];
+            if (!eventi.length) {
+                document.getElementById('elencoImpegniText').value = '';
+                return;
+            }
+            var lines = eventi.map(function(e) {
+                return `${e.title} | ${e.start}${e.end ? ' - ' + e.end : ''}${e.descrizione ? ' | ' + e.descrizione : ''}`;
+            });
+            document.getElementById('elencoImpegniText').value = lines.join('\n');
+        }
+        // Aggiorna elenco al caricamento
+        aggiornaElencoImpegniText();
     </script>
 </body>
 </html> 

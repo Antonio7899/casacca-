@@ -69,9 +69,19 @@
         <script>
             function copyMsg(){
                 var t=document.getElementById('msg');
-                t.select();
-                document.execCommand('copy');
-                alert('Messaggio copiato!');
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(t.value).then(function() {
+                        alert('Messaggio copiato!');
+                    }, function() {
+                        t.select();
+                        document.execCommand('copy');
+                        alert('Messaggio copiato!');
+                    });
+                } else {
+                    t.select();
+                    document.execCommand('copy');
+                    alert('Messaggio copiato!');
+                }
             }
         </script>
     </div>

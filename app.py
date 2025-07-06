@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, url_for, flash, get_flashed_messages, send_file, render_template_string, render_template, send_from_directory
+from flask import Flask, request, redirect, url_for, flash, get_flashed_messages, send_file, render_template_string, render_template, send_from_directory, session
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -11,6 +11,12 @@ from reportlab.pdfgen import canvas
 import datetime
 from datetime import date
 import urllib.parse
+from sqlalchemy import extract, func
+try:
+    import holidays
+except ImportError:
+    holidays = None
+import tempfile
 
 # 1. INIZIALIZZAZIONE
 app = Flask(__name__)
@@ -172,24 +178,87 @@ def register():
 
 @app.route('/dashboard')
 def dashboard():
-    # Esempio di raccolta dati, da adattare ai tuoi modelli e logica
     num_stewards = Steward.query.count()
     num_eventi = Evento.query.count()
     saldo = db.session.query(db.func.sum(MovimentoFinanziario.importo)).scalar() or 0
-    eventi_imminenti = Evento.query.filter(Evento.data_inizio >= datetime.datetime.now(), Evento.data_inizio <= datetime.datetime.now() + datetime.timedelta(days=7)).count()
+
+    now = datetime.datetime.now()
+    eventi_imminenti = Evento.query.filter(Evento.data_inizio >= now, Evento.data_inizio <= now + datetime.timedelta(days=7)).count()
     ultimi_eventi = Evento.query.order_by(Evento.data_inizio.desc()).limit(5).all()
-    # Dati per i grafici (esempio, da adattare)
-    tipo_labels = []
-    tipo_data = []
-    stato_labels = []
-    stato_data = []
-    mesi_ordinati = []
+
+    # Grafico eventi per tipo
+    tipo_counts = db.session.query(Evento.tipo_evento, func.count(Evento.id)).group_by(Evento.tipo_evento).all()
+    tipo_labels = [t[0] for t in tipo_counts]
+    tipo_data = [t[1] for t in tipo_counts]
+
+    # Grafico eventi per stato
+    stato_counts = db.session.query(Evento.stato, func.count(Evento.id)).group_by(Evento.stato).all()
+    stato_labels = [s[0] for s in stato_counts]
+    stato_data = [s[1] for s in stato_counts]
+
+    # Saldo per mese (ultimi 12 mesi)
     saldi_mensili = []
+    mesi_ordinati = []
+    for i in range(11, -1, -1):
+        mese = (now - datetime.timedelta(days=30*i)).replace(day=1)
+        mese_str = mese.strftime('%b %Y')
+        mesi_ordinati.append(mese_str)
+        saldo_mese = db.session.query(func.sum(MovimentoFinanziario.importo)).filter(
+            extract('year', MovimentoFinanziario.data) == mese.year,
+            extract('month', MovimentoFinanziario.data) == mese.month
+        ).scalar() or 0
+        saldi_mensili.append(round(saldo_mese, 2))
+
+    # Eventi per calendario
     eventi_cal = []
+    for ev in Evento.query.all():
+        eventi_cal.append({
+            "id": ev.id,
+            "title": ev.nome,
+            "start": ev.data_inizio.strftime('%Y-%m-%d'),
+            "end": ev.data_fine.strftime('%Y-%m-%d'),
+            "color": "#17a2b8",
+            "descrizione": ev.descrizione or ""
+        })
+
+    # Festività italiane (libreria holidays)
     holidays_list = []
+    if holidays:
+        try:
+            it_holidays = holidays.country_holidays('IT', years=now.year)
+            for date, label in it_holidays.items():
+                holidays_list.append({"date": str(date), "label": label})
+        except Exception:
+            holidays_list = [
+                {"date": "2025-01-01", "label": "Capodanno"},
+                {"date": "2025-12-25", "label": "Natale"},
+            ]
+    else:
+        holidays_list = [
+            {"date": "2025-01-01", "label": "Capodanno"},
+            {"date": "2025-12-25", "label": "Natale"},
+        ]
+
+    # Domeniche (ultimi 12 mesi)
     sundays = []
+    for i in range(365):
+        d = now - datetime.timedelta(days=i)
+        if d.weekday() == 6:
+            sundays.append(d.strftime('%Y-%m-%d'))
+
+    # Meteo prossimo evento (demo statica)
+    prossimo_evento = Evento.query.filter(Evento.data_inizio >= now).order_by(Evento.data_inizio).first()
     meteo_info_dashboard = None
-    # TODO: Popola le variabili sopra con la tua logica reale
+    if prossimo_evento:
+        meteo_info_dashboard = {
+            "evento": prossimo_evento,
+            "icon": "☀️",
+            "desc": "Soleggiato",
+            "tmin": 18,
+            "tmax": 28,
+            "rain": 0
+        }
+
     return render_template('dashboard.html',
         num_stewards=num_stewards,
         num_eventi=num_eventi,
@@ -484,9 +553,12 @@ def export_stewards():
                 'Esperienza': steward.experience or ''
             })
         df = pd.DataFrame(data)
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='Steward', index=False)
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+            with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='Steward', index=False)
+            tmp.seek(0)
+            output = io.BytesIO(tmp.read())
         output.seek(0)
         flash('✅ Esportazione completata con successo!', 'success')
         return send_file(
@@ -606,6 +678,23 @@ def export_steward_pdf(steward_id):
                 .instructions { background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #0072c6; }
                 .warning { background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107; }
             </style>
+            <script>
+            function copyToClipboard(el) {
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(el.value).then(function() {
+                        alert('Copiato negli appunti!');
+                    }, function() {
+                        el.select();
+                        document.execCommand('copy');
+                        alert('Copiato negli appunti!');
+                    });
+                } else {
+                    el.select();
+                    document.execCommand('copy');
+                    alert('Copiato negli appunti!');
+                }
+            }
+            </script>
         </head>
         <body>
             <div class="container">
@@ -633,13 +722,13 @@ def export_steward_pdf(steward_id):
                 
                 <div class="link-box">
                     <strong>🔗 Link diretto al PDF:</strong><br>
-                    <input type="text" value="{{ full_pdf_url }}" class="link-input" readonly onclick="this.select();document.execCommand('copy');" title="Clicca per copiare">
+                    <input type="text" value="{{ full_pdf_url }}" class="link-input" readonly onclick="copyToClipboard(this)" title="Clicca per copiare">
                     <br><small>Clicca sul link per copiarlo negli appunti</small>
                 </div>
                 
                 <div class="link-box">
                     <strong>📱 Messaggio per WhatsApp:</strong><br>
-                    <textarea class="link-input" rows="3" readonly onclick="this.select();document.execCommand('copy');" title="Clicca per copiare">{{ whatsapp_msg }}</textarea>
+                    <textarea class="link-input" rows="3" readonly onclick="copyToClipboard(this)" title="Clicca per copiare">{{ whatsapp_msg }}</textarea>
                     <br><small>Clicca sul testo per copiarlo negli appunti</small>
                 </div>
             </div>
@@ -702,13 +791,13 @@ def events():
         data_fine_str = request.form.get('data_fine')
         
         try:
-            data_inizio = datetime.datetime.strptime(data_inizio_str, '%Y-%m-%dT%H:%M')
-            data_fine = datetime.datetime.strptime(data_fine_str, '%Y-%m-%dT%H:%M')
+            data_inizio = datetime.datetime.strptime(data_inizio_str, '%Y-%m-%dT%H:%M') if data_inizio_str else None
+            data_fine = datetime.datetime.strptime(data_fine_str, '%Y-%m-%dT%H:%M') if data_fine_str else None
         except:
             flash('⚠️ Formato data non valido!', 'warning')
             return redirect(url_for('events'))
         
-        if data_fine < data_inizio:
+        if data_inizio and data_fine and data_fine < data_inizio:
             flash('⚠️ La data di fine deve essere successiva o uguale alla data di inizio!', 'warning')
             return redirect(url_for('events'))
         
@@ -774,14 +863,16 @@ def events():
     
     if data_da:
         try:
-            data_da_obj = datetime.datetime.strptime(data_da, '%Y-%m-%d')
-            eventi_query = eventi_query.filter(Evento.data_inizio >= data_da_obj)
+            data_da_obj = datetime.datetime.strptime(data_da, '%Y-%m-%d') if data_da else None
+            if data_da_obj:
+                eventi_query = eventi_query.filter(Evento.data_inizio >= data_da_obj)
         except: pass
     
     if data_a:
         try:
-            data_a_obj = datetime.datetime.strptime(data_a, '%Y-%m-%d')
-            eventi_query = eventi_query.filter(Evento.data_fine <= data_a_obj)
+            data_a_obj = datetime.datetime.strptime(data_a, '%Y-%m-%d') if data_a else None
+            if data_a_obj:
+                eventi_query = eventi_query.filter(Evento.data_fine <= data_a_obj)
         except: pass
     
     eventi = eventi_query.order_by(Evento.data_inizio.asc()).all()
@@ -1272,6 +1363,8 @@ def export_event_excel(evento_id):
     df = pd.DataFrame(data)
     
     # Crea il file Excel
+    uploads_dir = os.path.join(os.getcwd(), 'uploads')
+    os.makedirs(uploads_dir, exist_ok=True)
     filename = f"evento_{evento_id}_{evento.nome.replace(' ', '_')}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     filepath = os.path.join(uploads_dir, filename)
     
@@ -1429,13 +1522,13 @@ def edit_event(evento_id):
         data_fine_str = request.form.get('data_fine')
         
         try:
-            data_inizio = datetime.datetime.strptime(data_inizio_str, '%Y-%m-%dT%H:%M')
-            data_fine = datetime.datetime.strptime(data_fine_str, '%Y-%m-%dT%H:%M')
+            data_inizio = datetime.datetime.strptime(data_inizio_str, '%Y-%m-%dT%H:%M') if data_inizio_str else None
+            data_fine = datetime.datetime.strptime(data_fine_str, '%Y-%m-%dT%H:%M') if data_fine_str else None
         except:
             flash('⚠️ Formato data non valido!', 'warning')
             return redirect(url_for('edit_event', evento_id=evento_id))
         
-        if data_fine < data_inizio:
+        if data_inizio and data_fine and data_fine < data_inizio:
             flash('⚠️ La data di fine deve essere successiva o uguale alla data di inizio!', 'warning')
             return redirect(url_for('edit_event', evento_id=evento_id))
         
@@ -1507,6 +1600,68 @@ def delete_event(evento_id):
     db.session.commit()
     flash(f'🗑️ Evento "{evento.nome}" eliminato.', 'success')
     return redirect(url_for('events'))
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('Logout effettuato con successo!', 'success')
+    return redirect(url_for('login'))
+
+@app.route('/esporta_eventi')
+def esporta_eventi():
+    formato = request.args.get('formato', 'pdf')
+    filtro = request.args.get('filtro', 'annuale')
+    mese = request.args.get('mese')
+    evento_id = request.args.get('evento_id')
+
+    # Filtra eventi in base ai parametri (qui esempio base: tutti gli eventi)
+    eventi = Evento.query.order_by(Evento.data_inizio.asc()).all()
+
+    if formato == 'excel':
+        import pandas as pd
+        import tempfile
+        data = []
+        for e in eventi:
+            data.append({
+                'Nome': e.nome,
+                'Data Inizio': e.data_inizio.strftime('%d/%m/%Y %H:%M'),
+                'Data Fine': e.data_fine.strftime('%d/%m/%Y %H:%M'),
+                'Luogo': e.luogo,
+                'Tipo': e.tipo_evento,
+                'Stato': e.stato,
+            })
+        df = pd.DataFrame(data)
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+            with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False)
+            tmp.seek(0)
+            output = io.BytesIO(tmp.read())
+        output.seek(0)
+        return send_file(output, as_attachment=True, download_name='elenco_eventi.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    elif formato == 'pdf':
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+        buffer = io.BytesIO()
+        p = canvas.Canvas(buffer, pagesize=A4)
+        y = 800
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(40, y, "Elenco Eventi")
+        y -= 30
+        p.setFont("Helvetica", 10)
+        for e in eventi:
+            line = f"{e.nome} | {e.data_inizio.strftime('%d/%m/%Y %H:%M')} - {e.data_fine.strftime('%d/%m/%Y %H:%M')} | {e.luogo} | {e.tipo_evento} | {e.stato}"
+            p.drawString(40, y, line)
+            y -= 18
+            if y < 50:
+                p.showPage()
+                y = 800
+        p.save()
+        buffer.seek(0)
+        return send_file(buffer, as_attachment=True, download_name='elenco_eventi.pdf', mimetype='application/pdf')
+
+    else:
+        return "Formato non supportato", 400
 
 # 8. ESECUZIONE
 if __name__ == '__main__':
