@@ -1356,11 +1356,7 @@ def whatsapp_presenze(evento_id):
     <!DOCTYPE html><html><head><title>Messaggio Presenze WhatsApp</title><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{font-family:Arial,sans-serif;margin:0;background:#f4f4f9}.header{background:#25d366;color:white;padding:15px 30px;text-align:center;font-size:1.5em}.container{padding:30px;max-width:800px;margin:auto}.btn{background:#25d366;color:white;padding:15px 30px;border:none;border-radius:8px;text-decoration:none;cursor:pointer;font-size:1.1em;margin:10px;display:inline-block}.btn:hover{background:#128c7e}.message-preview{background:white;padding:20px;border-radius:8px;margin:20px 0;border-left:4px solid #25d366;white-space:pre-wrap;font-family:monospace;max-height:400px;overflow-y:auto}.copy-btn{background:#667eea;color:white;padding:8px 15px;border:none;border-radius:5px;cursor:pointer;margin-left:10px}.copy-btn:hover{background:#5a6fd8}.back-btn{background:#6c757d;color:white;padding:10px 20px;border:none;border-radius:5px;text-decoration:none;display:inline-block;margin-top:20px}</style></head><body><div class="header">👥 Messaggio Presenze WhatsApp</div><div class="container"><h2>Lista Presenze per {{ evento.nome }}</h2><div class="message-preview">{{ messaggio }}</div><div style="text-align:center;margin:30px 0;"><a href="{{ whatsapp_url }}" target="_blank" class="btn">📱 Apri WhatsApp</a><button onclick="copyToClipboard('{{ messaggio }}')" class="copy-btn">📋 Copia Messaggio</button></div><a href="/event/{{ evento.id }}/stewards" class="back-btn">← Torna alla Gestione Steward</a></div><script>function copyToClipboard(text) {navigator.clipboard.writeText(text).then(function() {alert('Messaggio copiato negli appunti!');}).catch(function(err) {console.error('Errore nella copia: ', err);});}</script></body></html>
     ''', evento=evento, messaggio=messaggio, whatsapp_url=whatsapp_url)
 
-# 7. ESECUZIONE
-if __name__ == '__main__':
-    app.run(debug=True, port=5001)
-
-# Sistema di notifiche automatiche per eventi imminenti
+# 7. SISTEMA DI NOTIFICHE AUTOMATICHE PER EVENTI IMMINENTI
 @app.route('/notifiche_eventi')
 def notifiche_eventi():
     # Eventi che iniziano nelle prossime 24 ore
@@ -1481,3 +1477,7 @@ def delete_event(evento_id):
     db.session.commit()
     flash(f'🗑️ Evento "{evento.nome}" eliminato.', 'success')
     return redirect(url_for('events'))
+
+# 8. ESECUZIONE
+if __name__ == '__main__':
+    app.run(debug=True, port=5001)
