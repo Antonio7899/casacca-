@@ -7,3 +7,4 @@ openpyxl
 fpdf2
 Flask-Migrate
 requests
+reportlab
